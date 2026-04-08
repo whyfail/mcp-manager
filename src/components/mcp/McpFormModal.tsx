@@ -116,7 +116,7 @@ const McpFormModal: React.FC<McpFormModalProps> = ({
 
   const handleTestConnection = async () => {
     if (!parsedServer) return;
-    
+
     setIsTesting(true);
     setTestResult(null);
     try {
@@ -193,12 +193,12 @@ const McpFormModal: React.FC<McpFormModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
-      <div className="bg-[hsl(var(--card))] rounded-2xl w-full max-w-3xl max-h-[90vh] overflow-hidden shadow-2xl border border-[hsl(var(--border))] flex flex-col">
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-2 sm:p-4 animate-in fade-in duration-200">
+      <div className="bg-[hsl(var(--card))] rounded-2xl w-full max-w-3xl max-h-[90vh] sm:max-h-[85vh] overflow-hidden shadow-2xl border border-[hsl(var(--border))] flex flex-col">
         {/* 头部 */}
-        <div className="flex items-center justify-between px-6 py-5 border-b border-[hsl(var(--border))] flex-shrink-0">
-          <div>
-            <h2 className="text-lg font-semibold">
+        <div className="flex items-center justify-between px-4 sm:px-6 py-4 sm:py-5 border-b border-[hsl(var(--border))] flex-shrink-0">
+          <div className="min-w-0">
+            <h2 className="text-base sm:text-lg font-semibold truncate">
               {editingId ? "编辑服务器" : "添加 MCP 服务器"}
             </h2>
             {!editingId && (
@@ -209,7 +209,7 @@ const McpFormModal: React.FC<McpFormModalProps> = ({
           </div>
           <button
             onClick={onClose}
-            className="p-2 hover:bg-[hsl(var(--muted))] rounded-lg transition-colors"
+            className="p-2 hover:bg-[hsl(var(--muted))] rounded-lg transition-colors flex-shrink-0"
           >
             <X size={18} className="text-[hsl(var(--muted-foreground))]" />
           </button>
@@ -218,11 +218,11 @@ const McpFormModal: React.FC<McpFormModalProps> = ({
         {/* 表单内容 */}
         <form
           onSubmit={handleSubmit}
-          className="flex-1 overflow-y-auto px-6 py-5 space-y-5 min-h-0"
+          className="flex-1 overflow-y-auto px-4 sm:px-6 py-4 sm:py-5 space-y-4 sm:space-y-5 min-h-0"
         >
           {/* JSON 输入区 */}
           <div className="space-y-2">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between gap-2">
               <label className="text-sm font-medium flex items-center gap-2">
                 <ClipboardPaste size={14} />
                 MCP 配置 JSON
@@ -230,7 +230,7 @@ const McpFormModal: React.FC<McpFormModalProps> = ({
               <button
                 type="button"
                 onClick={() => setShowExample(!showExample)}
-                className="text-xs text-[hsl(var(--primary))] hover:underline flex items-center gap-1"
+                className="text-xs text-[hsl(var(--primary))] hover:underline flex items-center gap-1 flex-shrink-0"
               >
                 {showExample ? "收起示例" : "查看示例"}
                 {showExample ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
@@ -241,7 +241,7 @@ const McpFormModal: React.FC<McpFormModalProps> = ({
                 value={jsonInput}
                 onChange={(e) => handleJsonChange(e.target.value)}
                 placeholder={`请从 MCP 介绍页面复制配置 JSON (如 Claude Desktop/Settings.json)，粘贴到此处...\n\n支持格式:\n{ "mcpServers": { "server-id": { "command": "...", "args": [] } } }\n或\n{ "server-id": { "command": "...", "args": [] } }`}
-                className={`w-full px-4 py-3 bg-[hsl(var(--muted))] border rounded-lg text-sm font-mono leading-relaxed focus:outline-none focus:ring-2 focus:ring-[hsl(var(--ring))] focus:border-transparent transition-all resize-y ${
+                className={`w-full px-3 sm:px-4 py-3 bg-[hsl(var(--muted))] border rounded-lg text-xs sm:text-sm font-mono leading-relaxed focus:outline-none focus:ring-2 focus:ring-[hsl(var(--ring))] focus:border-transparent transition-all resize-y ${
                   parseError
                     ? "border-red-500/50"
                     : parsedServer
@@ -252,8 +252,8 @@ const McpFormModal: React.FC<McpFormModalProps> = ({
               />
               {/* 状态提示 */}
               {parseError && (
-                <div className="absolute bottom-3 right-3 flex items-center gap-1.5 text-xs text-red-500 bg-[hsl(var(--card))] px-2 py-1 rounded shadow-sm">
-                  <AlertCircle size={12} />
+                <div className="absolute bottom-3 right-3 flex items-center gap-1.5 text-xs text-red-500 bg-[hsl(var(--card))] px-2 py-1 rounded shadow-sm max-w-[80%] truncate">
+                  <AlertCircle size={12} className="flex-shrink-0" />
                   {parseError}
                 </div>
               )}
@@ -280,8 +280,8 @@ const McpFormModal: React.FC<McpFormModalProps> = ({
 
           {/* 解析结果预览 */}
           {parsedServer && (
-            <div className="rounded-xl border border-[hsl(var(--primary))/20 bg-[hsl(var(--primary))/5] p-4 space-y-3">
-              <div className="flex items-center justify-between">
+            <div className="rounded-xl border border-[hsl(var(--primary))/20 bg-[hsl(var(--primary))/5] p-3 sm:p-4 space-y-3">
+              <div className="flex flex-wrap items-center justify-between gap-2">
                 <h3 className="text-sm font-medium text-[hsl(var(--primary))]">
                   配置解析成功
                 </h3>
@@ -313,26 +313,26 @@ const McpFormModal: React.FC<McpFormModalProps> = ({
               </div>
 
               {testResult && (
-                <div className={`text-xs p-2 rounded border ${testResult.success ? "bg-green-500/10 border-green-500/20 text-green-600" : "bg-red-500/10 border-red-500/20 text-red-600"}`}>
+                <div className={`text-xs p-2 rounded border break-all ${testResult.success ? "bg-green-500/10 border-green-500/20 text-green-600" : "bg-red-500/10 border-red-500/20 text-red-600"}`}>
                   {testResult.message}
                 </div>
               )}
 
-              <div className="grid grid-cols-2 gap-4 text-sm">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 sm:gap-4 text-sm">
                 <div>
                   <span className="text-[hsl(var(--muted-foreground))]">ID</span>
-                  <p className="font-mono text-xs mt-0.5">{parsedServer.id}</p>
+                  <p className="font-mono text-xs mt-0.5 break-all">{parsedServer.id}</p>
                 </div>
                 <div>
                   <span className="text-[hsl(var(--muted-foreground))]">名称</span>
-                  <p className="text-xs mt-0.5">{parsedServer.name}</p>
+                  <p className="text-xs mt-0.5 truncate">{parsedServer.name}</p>
                 </div>
               </div>
               <div className="text-xs font-mono bg-[hsl(var(--card))] rounded p-3 border border-[hsl(var(--border))]">
                 <div className="flex justify-between text-[hsl(var(--muted-foreground))] mb-1">
                   <span>命令</span>
                 </div>
-                <div className="text-[hsl(var(--foreground))]">
+                <div className="text-[hsl(var(--foreground))] break-all">
                   {parsedServer.server.command || "N/A"}{" "}
                   {parsedServer.server.args?.join(" ")}
                 </div>
@@ -341,21 +341,21 @@ const McpFormModal: React.FC<McpFormModalProps> = ({
           )}
 
           {/* 集成到工具 */}
-          <div className="rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--muted))/30] p-5 space-y-3">
+          <div className="rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--muted))/30] p-3 sm:p-5 space-y-3">
             <div className="flex items-center justify-between">
               <label className="text-sm font-medium">集成到工具</label>
               {installedAgents.length > 0 && (
                 <button
                   type="button"
                   onClick={toggleAllApps}
-                  className="text-xs text-[hsl(var(--primary))] hover:underline"
+                  className="text-xs text-[hsl(var(--primary))] hover:underline flex-shrink-0"
                 >
                   {Object.values(selectedApps).every(Boolean) ? "取消全选" : "全选"}
                 </button>
               )}
             </div>
             {installedAgents.length > 0 ? (
-              <div className="grid grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                 {installedAgents.map((agent) => {
                   const enabled = selectedApps[agent.id] ?? false;
                   return (
@@ -392,18 +392,18 @@ const McpFormModal: React.FC<McpFormModalProps> = ({
         </form>
 
         {/* 按钮 */}
-        <div className="flex justify-end gap-3 px-6 py-4 border-t border-[hsl(var(--border))] bg-[hsl(var(--muted))/30] flex-shrink-0">
+        <div className="flex flex-wrap justify-end gap-2 sm:gap-3 px-4 sm:px-6 py-3 sm:py-4 border-t border-[hsl(var(--border))] bg-[hsl(var(--muted))/30] flex-shrink-0">
           <button
             type="button"
             onClick={onClose}
-            className="px-5 py-2.5 bg-[hsl(var(--secondary))] hover:brightness-[0.95] active:brightness-[0.9] text-[hsl(var(--secondary-foreground))] rounded-lg text-sm font-medium transition-all border border-[hsl(var(--border))]"
+            className="px-4 sm:px-5 py-2 sm:py-2.5 bg-[hsl(var(--secondary))] hover:brightness-[0.95] active:brightness-[0.9] text-[hsl(var(--secondary-foreground))] rounded-lg text-sm font-medium transition-all border border-[hsl(var(--border))]"
           >
             取消
           </button>
           <button
             onClick={handleSubmit}
             disabled={!parsedServer || isSubmitting || installedAgents.length === 0 || !!(parsedServer.server.command && !testResult?.success)}
-            className="px-5 py-2.5 bg-[hsl(var(--primary))] hover:brightness-[0.9] active:brightness-[0.85] text-white rounded-lg text-sm font-medium transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-4 sm:px-5 py-2 sm:py-2.5 bg-[hsl(var(--primary))] hover:brightness-[0.9] active:brightness-[0.85] text-white rounded-lg text-sm font-medium transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
             title={parsedServer?.server.command && !testResult?.success ? "请先测试连接成功后再保存" : ""}
           >
             {isSubmitting

@@ -7,6 +7,7 @@ use crate::app_state::AppState;
 use crate::database::McpApps;
 use crate::import::import_from_path;
 use crate::mcp::AppType;
+use crate::services::sync;
 use std::process::Command;
 
 /// 检测到的 Agent 信息（前端用）
@@ -80,6 +81,10 @@ pub async fn sync_agent_mcp(
         let _ = state.db.save_mcp_server(&server);
         count += 1;
     }
+
+    // 同步到各工具的配置文件
+    let servers = state.db.get_all_mcp_servers().map_err(|e| e.to_string())?;
+    sync::sync_all_live_configs(&servers).map_err(|e| e.to_string())?;
 
     Ok(count)
 }

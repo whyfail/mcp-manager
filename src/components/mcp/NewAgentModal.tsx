@@ -9,17 +9,6 @@ import {
   Loader2,
 } from "lucide-react";
 
-const AGENT_LIST = [
-  { id: "qwen-code", name: "Qwen Code" },
-  { id: "claude", name: "Claude Code" },
-  { id: "codex", name: "Codex" },
-  { id: "gemini", name: "Gemini CLI" },
-  { id: "opencode", name: "OpenCode" },
-  { id: "openclaw", name: "OpenClaw" },
-  { id: "trae", name: "Trae" },
-  { id: "trae-cn", name: "Trae CN" },
-];
-
 interface AgentInfo {
   id: string;
   name: string;
@@ -30,12 +19,14 @@ interface AgentInfo {
 
 interface NewAgentModalProps {
   agents: AgentInfo[];
+  installedAgents: AgentInfo[];
   onClose: () => void;
   onSyncComplete: () => void;
 }
 
 const NewAgentModal: React.FC<NewAgentModalProps> = ({
   agents,
+  installedAgents,
   onClose,
   onSyncComplete,
 }) => {
@@ -51,7 +42,7 @@ const NewAgentModal: React.FC<NewAgentModalProps> = ({
   const [selectedApps, setSelectedApps] = useState<Record<string, boolean>>(
     () => {
       const initial: Record<string, boolean> = {};
-      AGENT_LIST.forEach((a) => (initial[a.id] = true));
+      installedAgents.forEach((a) => (initial[a.id] = true));
       return initial;
     }
   );
@@ -95,16 +86,17 @@ const NewAgentModal: React.FC<NewAgentModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[60] p-4">
-      <div className="bg-[hsl(var(--card))] rounded-2xl w-full max-w-lg shadow-2xl border border-[hsl(var(--border))] overflow-hidden">
+    <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-[60] p-2 sm:p-4">
+      <div className="bg-[hsl(var(--card))] rounded-2xl w-full max-w-lg max-h-[90vh] sm:max-h-[85vh] shadow-2xl border border-[hsl(var(--border))] overflow-hidden flex flex-col">
         {/* 头部 */}
-        <div className="px-6 py-5 border-b border-[hsl(var(--border))] flex items-start justify-between">
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center">
-              <Plus size={20} className="text-emerald-500" />
+        <div className="px-4 sm:px-6 py-4 sm:py-5 border-b border-[hsl(var(--border))] flex items-start justify-between gap-3 flex-shrink-0">
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+            <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center flex-shrink-0">
+              <Plus size={16} className="text-emerald-500 sm:hidden" />
+              <Plus size={20} className="text-emerald-500 hidden sm:block" />
             </div>
-            <div>
-              <h2 className="text-lg font-semibold">发现新的 AI 工具</h2>
+            <div className="min-w-0">
+              <h2 className="text-base sm:text-lg font-semibold truncate">发现新的 AI 工具</h2>
               <p className="text-xs text-[hsl(var(--muted-foreground))] mt-0.5">
                 检测到 {agents.length} 个新安装的工具，是否同步其 MCP 配置？
               </p>
@@ -112,14 +104,14 @@ const NewAgentModal: React.FC<NewAgentModalProps> = ({
           </div>
           <button
             onClick={onClose}
-            className="p-2 hover:bg-[hsl(var(--muted))] rounded-lg transition-colors"
+            className="p-2 hover:bg-[hsl(var(--muted))] rounded-lg transition-colors flex-shrink-0"
           >
             <X size={18} className="text-[hsl(var(--muted-foreground))]" />
           </button>
         </div>
 
         {/* 检测到的工具列表 */}
-        <div className="px-6 py-4 border-b border-[hsl(var(--border))]">
+        <div className="px-4 sm:px-6 py-4 border-b border-[hsl(var(--border))] overflow-y-auto flex-1 min-h-0">
           <h3 className="text-xs font-medium text-[hsl(var(--muted-foreground))] uppercase tracking-wider mb-3">
             检测到的工具
           </h3>
@@ -146,7 +138,7 @@ const NewAgentModal: React.FC<NewAgentModalProps> = ({
                   )}
                 </div>
                 <div className="flex items-center gap-2 flex-1 min-w-0">
-                  <Terminal size={16} className="text-[hsl(var(--muted-foreground))]" />
+                  <Terminal size={16} className="text-[hsl(var(--muted-foreground))] flex-shrink-0" />
                   <span className="text-sm font-medium truncate">
                     {agent.name}
                   </span>
@@ -163,16 +155,16 @@ const NewAgentModal: React.FC<NewAgentModalProps> = ({
         </div>
 
         {/* 集成到的工具 */}
-        <div className="px-6 py-4 border-b border-[hsl(var(--border))]">
+        <div className="px-4 sm:px-6 py-4 border-b border-[hsl(var(--border))] flex-shrink-0">
           <h3 className="text-xs font-medium text-[hsl(var(--muted-foreground))] uppercase tracking-wider mb-3">
             同步到以下工具
           </h3>
-          <div className="flex flex-wrap gap-2">
-            {AGENT_LIST.map((agent) => (
+          <div className="flex flex-wrap gap-1.5 sm:gap-2">
+            {installedAgents.map((agent) => (
               <button
                 key={agent.id}
                 onClick={() => toggleApp(agent.id)}
-                className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
+                className={`px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-medium transition-all ${
                   selectedApps[agent.id]
                     ? "bg-[hsl(var(--primary))] text-white"
                     : "bg-[hsl(var(--muted))] text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]"
@@ -185,8 +177,8 @@ const NewAgentModal: React.FC<NewAgentModalProps> = ({
         </div>
 
         {/* 底部按钮 */}
-        <div className="flex items-center justify-between px-6 py-4 bg-[hsl(var(--muted))/30]">
-          <div className="text-sm text-[hsl(var(--muted-foreground))]">
+        <div className="flex flex-wrap items-center justify-between gap-2 sm:gap-3 px-4 sm:px-6 py-3 sm:py-4 bg-[hsl(var(--muted))/30] flex-shrink-0">
+          <div className="text-xs sm:text-sm text-[hsl(var(--muted-foreground))] order-2 sm:order-1 w-full sm:w-auto">
             {syncing ? (
               <span className="flex items-center gap-2">
                 <Loader2 size={14} className="animate-spin" />
@@ -198,10 +190,10 @@ const NewAgentModal: React.FC<NewAgentModalProps> = ({
               } 个工具的配置`
             )}
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 order-1 sm:order-2 flex-shrink-0">
             <button
               onClick={onClose}
-              className="px-4 py-2 text-sm text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] transition-colors"
+              className="px-3 sm:px-4 py-2 text-sm text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] transition-colors"
             >
               稍后同步
             </button>
@@ -212,7 +204,7 @@ const NewAgentModal: React.FC<NewAgentModalProps> = ({
                 !Object.values(selectedAgents).some(Boolean) ||
                 !Object.values(selectedApps).some(Boolean)
               }
-              className="px-5 py-2 bg-[hsl(var(--primary))] hover:bg-[hsl(var(--primary))/0.9] text-white rounded-lg text-sm font-medium transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-4 sm:px-5 py-2 bg-[hsl(var(--primary))] hover:brightness-110 active:brightness-90 text-white rounded-lg text-sm font-medium transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {syncing ? "同步中..." : "同步 MCP 配置"}
             </button>

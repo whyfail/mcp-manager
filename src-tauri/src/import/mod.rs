@@ -36,7 +36,7 @@ pub fn import_from_path(app: AppType, path: &PathBuf) -> Option<ImportResult> {
     Some(ImportResult {
         servers,
         app,
-        source_path: path.to_string(),
+        source_path: path.to_string_lossy().to_string(),
     })
 }
 

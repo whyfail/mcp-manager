@@ -120,9 +120,9 @@ pub fn get_agent_config_paths(app: &AppType) -> Vec<PathBuf> {
         }
         AppType::CodeBuddy => {
             if cfg!(windows) {
-                vec!["%USERPROFILE%\\.codebuddy.json"]
+                vec!["%USERPROFILE%\\.codebuddy\\mcp.json"]
             } else {
-                vec!["~/.codebuddy.json"]
+                vec!["~/.codebuddy/mcp.json"]
             }
         }
     };

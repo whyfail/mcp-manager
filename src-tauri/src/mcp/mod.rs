@@ -36,6 +36,8 @@ impl AppType {
             Self::OpenClaw,
             Self::Trae,
             Self::TraeCn,
+            Self::Qoder,
+            Self::CodeBuddy,
         ]
     }
 

@@ -47,6 +47,7 @@ const UnifiedMcpPanel: React.FC = () => {
   const [newAgents, setNewAgents] = useState<AgentInfo[] | null>(null);
   const [isScanning, setIsScanning] = useState(false);
   const [installedAgents, setInstalledAgents] = useState<AgentInfo[]>([]);
+  const [deleteId, setDeleteId] = useState<string | null>(null);
 
   const { data: serversMap, isLoading, refetch } = useAllMcpServers();
   const toggleAppMutation = useToggleMcpApp();
@@ -157,48 +158,55 @@ const UnifiedMcpPanel: React.FC = () => {
     setIsFormOpen(true);
   };
 
-  const handleDelete = async (id: string) => {
-    try {
-      await deleteServerMutation.mutateAsync(id);
-    } catch (error) {
-      console.error("Failed to delete:", error);
+  const handleDelete = (id: string) => {
+    setDeleteId(id);
+  };
+
+  const confirmDelete = async () => {
+    if (deleteId) {
+      try {
+        await deleteServerMutation.mutateAsync(deleteId);
+        setDeleteId(null);
+      } catch (error) {
+        console.error("Failed to delete:", error);
+      }
     }
   };
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* 头部 */}
-      <div className="px-8 pt-8 pb-5 border-b border-[hsl(var(--border))]">
-        <div className="flex items-center justify-between mb-5">
-          <div>
-            <h2 className="text-2xl font-semibold tracking-tight">
+      <div className="px-4 sm:px-8 pt-6 sm:pt-8 pb-4 sm:pb-5 border-b border-[hsl(var(--border))] flex-shrink-0">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-4 sm:mb-5">
+          <div className="min-w-0">
+            <h2 className="text-xl sm:text-2xl font-semibold tracking-tight truncate">
               MCP 服务器
             </h2>
-            <p className="text-sm text-[hsl(var(--muted-foreground))] mt-1">
+            <p className="text-xs sm:text-sm text-[hsl(var(--muted-foreground))] mt-1">
               管理所有 AI CLI 工具的 MCP 配置
             </p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-shrink-0">
             <button
               onClick={handleScan}
               disabled={isScanning}
-              className="inline-flex items-center gap-2 px-4 py-2.5 bg-[hsl(var(--secondary))] hover:brightness-[0.95] active:brightness-[0.9] text-[hsl(var(--secondary-foreground))] rounded-lg text-sm font-medium transition-all border border-[hsl(var(--border))] disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 bg-[hsl(var(--secondary))] hover:brightness-[0.95] active:brightness-[0.9] text-[hsl(var(--secondary-foreground))] rounded-lg text-sm font-medium transition-all border border-[hsl(var(--border))] disabled:opacity-50"
             >
               <RefreshCw size={16} className={isScanning ? "animate-spin" : ""} />
-              扫描工具
+              <span className="hidden sm:inline">扫描工具</span>
             </button>
             <button
               onClick={handleAdd}
-              className="inline-flex items-center gap-2 px-4 py-2.5 bg-[hsl(var(--primary))] hover:brightness-[0.9] active:brightness-[0.85] text-white rounded-lg text-sm font-medium transition-all shadow-sm"
+              className="inline-flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-2 sm:py-2.5 bg-[hsl(var(--primary))] hover:brightness-[0.9] active:brightness-[0.85] text-white rounded-lg text-sm font-medium transition-all shadow-sm"
             >
               <Plus size={16} />
-              添加服务器
+              <span className="hidden sm:inline">添加服务器</span>
             </button>
           </div>
         </div>
 
         {/* 搜索栏 */}
-        <div className="relative mb-4">
+        <div className="relative mb-3 sm:mb-4">
           <Search
             size={16}
             className="absolute left-3 top-1/2 -translate-y-1/2 text-[hsl(var(--muted-foreground))]"
@@ -208,17 +216,17 @@ const UnifiedMcpPanel: React.FC = () => {
             placeholder="搜索服务器..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-10 pr-4 py-2.5 bg-[hsl(var(--muted))] border border-[hsl(var(--border))] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--ring))] focus:border-transparent transition-all"
+            className="w-full pl-10 pr-4 py-2 sm:py-2.5 bg-[hsl(var(--muted))] border border-[hsl(var(--border))] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--ring))] focus:border-transparent transition-all"
           />
         </div>
 
         {/* 统计栏 */}
-        <div className="flex items-center gap-4 text-xs">
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs">
           <span className="font-medium text-[hsl(var(--muted-foreground))]">
             总计: {Object.keys(serversMap || {}).length}
           </span>
           {installedAgents.length > 0 && (
-            <div className="flex gap-3">
+            <div className="flex flex-wrap gap-x-3 gap-y-1">
               {installedAgents.map((agent) => (
                 <div
                   key={agent.id}
@@ -227,7 +235,7 @@ const UnifiedMcpPanel: React.FC = () => {
                   title="点击打开配置文件"
                 >
                   <div
-                    className={`w-2 h-2 rounded-full ${appColors[agent.id]}`}
+                    className={`w-2 h-2 rounded-full flex-shrink-0 ${appColors[agent.id]}`}
                   />
                   <span className="text-[hsl(var(--muted-foreground))] group-hover:text-[hsl(var(--foreground))] transition-colors flex items-center gap-1">
                     {agent.name}:{" "}
@@ -247,7 +255,7 @@ const UnifiedMcpPanel: React.FC = () => {
       </div>
 
       {/* 服务器列表 */}
-      <div className="flex-1 overflow-y-auto px-8 py-5">
+      <div className="flex-1 overflow-y-auto px-3 sm:px-8 py-4 sm:py-5">
         {isLoading ? (
           <div className="flex items-center justify-center h-64">
             <div className="text-[hsl(var(--muted-foreground))]">加载中...</div>
@@ -301,6 +309,7 @@ const UnifiedMcpPanel: React.FC = () => {
       {newAgents && (
         <NewAgentModal
           agents={newAgents}
+          installedAgents={installedAgents}
           onClose={() => setNewAgents(null)}
           onSyncComplete={() => {
             setNewAgents(null);
@@ -308,9 +317,37 @@ const UnifiedMcpPanel: React.FC = () => {
           }}
         />
       )}
+
+      {/* 删除确认弹窗 */}
+      {deleteId && (
+        <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4 animate-in fade-in duration-200">
+          <div className="bg-[hsl(var(--card))] rounded-xl w-full max-w-sm shadow-2xl border border-[hsl(var(--border))] overflow-hidden">
+            <div className="px-6 py-5 border-b border-[hsl(var(--border))]">
+              <h3 className="text-lg font-semibold">确认删除？</h3>
+              <p className="text-sm text-[hsl(var(--muted-foreground))] mt-1 line-clamp-1">
+                服务器: {deleteId}
+              </p>
+            </div>
+            <div className="px-6 py-4 flex justify-end gap-3">
+              <button
+                onClick={() => setDeleteId(null)}
+                className="px-4 py-2 rounded-lg text-sm font-medium bg-[hsl(var(--secondary))] hover:brightness-[0.95] text-[hsl(var(--secondary-foreground))]"
+              >
+                取消
+              </button>
+              <button
+                onClick={confirmDelete}
+                className="px-4 py-2 rounded-lg text-sm font-medium bg-red-500 hover:bg-red-600 text-white transition-colors"
+              >
+                删除
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
-};
+}
 
 // 服务器行组件
 interface McpServerRowProps {
@@ -337,12 +374,12 @@ const McpServerRow: React.FC<McpServerRowProps> = ({
   return (
     <div className="group rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] hover:border-[hsl(var(--ring))] transition-all duration-150 overflow-hidden">
       {/* 头部 */}
-      <div className="px-5 py-4 flex items-start justify-between gap-4">
+      <div className="px-3 sm:px-5 py-3 sm:py-4 flex items-start justify-between gap-3">
         <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2 mb-1">
+          <div className="flex items-center gap-1.5 sm:gap-2 mb-1">
             <h3 className="text-sm font-semibold truncate">{server.name}</h3>
             {server.tags && server.tags.length > 0 && (
-              <div className="flex gap-1 flex-shrink-0">
+              <div className="hidden sm:flex gap-1 flex-shrink-0">
                 {server.tags.slice(0, 2).map((tag, i) => (
                   <span
                     key={i}
@@ -361,7 +398,7 @@ const McpServerRow: React.FC<McpServerRowProps> = ({
           )}
         </div>
 
-        <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+        <div className="flex items-center gap-1 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity flex-shrink-0">
           <button
             onClick={() => onEdit(id)}
             className="p-2 hover:bg-[hsl(var(--muted))] rounded-lg transition-colors"
@@ -380,15 +417,15 @@ const McpServerRow: React.FC<McpServerRowProps> = ({
       </div>
 
       {/* 应用切换 */}
-      <div className="px-5 py-3 bg-[hsl(var(--muted))/50] border-t border-[hsl(var(--border))] flex items-center justify-between">
-        <span className="text-xs text-[hsl(var(--muted-foreground))]">
-          已启用: {activeCount}/{installedAgents.length}
-        </span>
-        <div className="flex flex-wrap gap-2">
+      <div className="px-3 sm:px-5 py-2.5 sm:py-3 bg-[hsl(var(--muted))/50] border-t border-[hsl(var(--border))]">
+        <div className="flex items-center gap-2 text-xs text-[hsl(var(--muted-foreground))] mb-2">
+          <span>已启用: {activeCount}/{installedAgents.length}</span>
+        </div>
+        <div className="flex flex-wrap gap-1.5 sm:gap-2">
           {installedAgents.map((agent) => (
             <label
               key={agent.id}
-              className={`inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg cursor-pointer transition-all text-xs font-medium ${
+              className={`inline-flex items-center gap-1.5 px-2 sm:px-2.5 py-1 sm:py-1.5 rounded-lg cursor-pointer transition-all text-xs font-medium ${
                 server.apps[agent.id]
                   ? "bg-[hsl(var(--primary))/10] text-[hsl(var(--primary))]"
                   : "bg-[hsl(var(--muted))] text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]"
@@ -401,7 +438,7 @@ const McpServerRow: React.FC<McpServerRowProps> = ({
                 className="sr-only"
               />
               <div
-                className={`w-2 h-2 rounded-full ${
+                className={`w-2 h-2 rounded-full flex-shrink-0 ${
                   server.apps[agent.id]
                     ? appColors[agent.id]
                     : "bg-current opacity-40"
@@ -412,6 +449,7 @@ const McpServerRow: React.FC<McpServerRowProps> = ({
           ))}
         </div>
       </div>
+
     </div>
   );
 };

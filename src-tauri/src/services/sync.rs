@@ -184,7 +184,7 @@ fn get_config_path_for_app(app: &AppType) -> Result<String, AppError> {
             if cfg!(windows) { "%USERPROFILE%\\.qoder\\settings.json" } else { "~/.qoder/settings.json" }
         },
         AppType::CodeBuddy => {
-            if cfg!(windows) { "%USERPROFILE%\\.codebuddy.json" } else { "~/.codebuddy.json" }
+            if cfg!(windows) { "%USERPROFILE%\\.codebuddy\\mcp.json" } else { "~/.codebuddy/mcp.json" }
         },
     }.to_string())
 }
