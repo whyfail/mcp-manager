@@ -33,7 +33,7 @@ jobs:
           cache: 'pnpm'
 
       - name: Install Rust stable
-        uses: actions-rust-lang/setup-rust-toolchain@v1
+        uses: dtolnay/rust-toolchain@stable
 
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
@@ -142,28 +142,37 @@ jobs:
           VERSION="${GITHUB_REF_NAME#v}"
           ARCH="aarch64"
 
-          # Locate bundle artifacts
-          BUNDLE_DIR="src-tauri/target/aarch64-apple-darwin/release/bundle"
-          APP_PATH=$(find "$BUNDLE_DIR/macos" -maxdepth 1 -name "*.app" -type d 2>/dev/null | head -1 || true)
-          DMG_PATH=$(find "$BUNDLE_DIR/dmg" -maxdepth 1 -name "*.dmg" -type f 2>/dev/null | head -1 || true)
+          # Recursively search for artifacts to handle different target paths
+          BUNDLE_DIR=$(find src-tauri/target -name "bundle" -type d | head -1 || true)
+          
+          if [ -z "$BUNDLE_DIR" ]; then
+            echo "❌ No bundle directory found" >&2
+            exit 1
+          fi
 
-          if [ -z "$APP_PATH" ] && [ -z "$DMG_PATH" ]; then
+          echo "📦 Found bundle dir: $BUNDLE_DIR"
+          
+          APP_PATH=$(find "$BUNDLE_DIR" -name "*.app" -type d 2>/dev/null | head -1 || true)
+          DMG_PATH=$(find "$BUNDLE_DIR" -name "*.dmg" -type f 2>/dev/null | head -1 || true)
+          ZIP_PATH=$(find "$BUNDLE_DIR" -name "*.zip" -type f 2>/dev/null | head -1 || true)
+
+          if [ -z "$APP_PATH" ] && [ -z "$DMG_PATH" ] && [ -z "$ZIP_PATH" ]; then
             echo "❌ No macOS artifacts found in $BUNDLE_DIR" >&2
             exit 1
           fi
 
-          # Use .app if no .dmg
-          if [ -z "$DMG_PATH" ] && [ -n "$APP_PATH" ]; then
+          # If only .app is found, zip it
+          if [ -z "$DMG_PATH" ] && [ -z "$ZIP_PATH" ] && [ -n "$APP_PATH" ]; then
             NEW_ZIP="MCP_Manager-${VERSION}-macOS-${ARCH}.zip"
             ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "release-assets/$NEW_ZIP"
-            echo "macOS zip ready: $NEW_ZIP"
+            echo "✅ macOS zip created: $NEW_ZIP"
           fi
 
-          # Use .dmg if available
+          # Copy .dmg if available
           if [ -n "$DMG_PATH" ]; then
             NEW_DMG="MCP_Manager-${VERSION}-macOS-${ARCH}.dmg"
             cp "$DMG_PATH" "release-assets/$NEW_DMG"
-            echo "macOS dmg ready: $NEW_DMG"
+            echo "✅ macOS dmg ready: $NEW_DMG"
           fi
 
       - name: Upload release artifacts to workflow
@@ -223,7 +232,6 @@ jobs:
             ### 📥 Downloads
 
             - **macOS (Apple Silicon)**: `MCP_Manager-${{ github.ref_name }}-macOS-aarch64.dmg`
-            - **macOS (Intel)**: `MCP_Manager-${{ github.ref_name }}-macOS-x86_64.dmg`
 
             > Linux and Windows support coming soon!
 
