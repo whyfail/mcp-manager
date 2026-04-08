@@ -4,7 +4,6 @@ import { listen, UnlistenFn } from "@tauri-apps/api/event";
 import {
   Server,
   Plus,
-  Download,
   Edit3,
   Trash2,
   Search,
@@ -15,7 +14,6 @@ import {
   useAllMcpServers,
   useToggleMcpApp,
   useDeleteMcpServer,
-  useImportMcpFromApps,
 } from "@/hooks/useMcp";
 import type { McpServer } from "@/types";
 import McpFormModal from "./McpFormModal";
@@ -53,7 +51,6 @@ const UnifiedMcpPanel: React.FC = () => {
   const { data: serversMap, isLoading, refetch } = useAllMcpServers();
   const toggleAppMutation = useToggleMcpApp();
   const deleteServerMutation = useDeleteMcpServer();
-  const importMutation = useImportMcpFromApps();
 
   // 打开配置文件
   const handleOpenConfig = async (agentId: string) => {
@@ -158,17 +155,6 @@ const UnifiedMcpPanel: React.FC = () => {
   const handleAdd = () => {
     setEditingId(null);
     setIsFormOpen(true);
-  };
-
-  const handleImport = async () => {
-    try {
-      const count = await importMutation.mutateAsync();
-      if (count > 0) {
-        alert(`成功导入 ${count} 个 MCP 服务器`);
-      }
-    } catch (error) {
-      console.error("Failed to import:", error);
-    }
   };
 
   const handleDelete = async (id: string) => {
