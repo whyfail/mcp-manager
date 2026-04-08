@@ -7,7 +7,6 @@ dist/
 build/
 
 # Tauri
-src-tauri/icons/
 src-tauri/target/
 
 # 数据库
