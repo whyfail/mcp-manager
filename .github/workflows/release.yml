@@ -1,0 +1,256 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+env:
+  CARGO_INCREMENTAL: 0
+  RUST_BACKTRACE: 1
+
+jobs:
+  release:
+    name: Build and Release
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            target: aarch64-apple-darwin
+            arch: aarch64
+          - os: macos-13
+            target: x86_64-apple-darwin
+            arch: x86_64
+    runs-on: ${{ matrix.os }}
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-action@stable
+        with:
+          targets: ${{ matrix.target }}
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Prepare Tauri signing key (optional)
+        shell: bash
+        run: |
+          if [ -n "${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}" ]; then
+            RAW="${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}"
+            KEY_PATH="$RUNNER_TEMP/tauri_signing.key"
+            if echo "$RAW" | head -n1 | grep -q '^untrusted comment:'; then
+              printf '%s\n' "$RAW" > "$KEY_PATH"
+            else
+              if DECODED=$(printf '%s' "$RAW" | (base64 --decode 2>/dev/null || base64 -D 2>/dev/null)) \
+                 && echo "$DECODED" | head -n1 | grep -q '^untrusted comment:'; then
+                printf '%s\n' "$DECODED" > "$KEY_PATH"
+              elif echo "$RAW" | grep -Eq '^[A-Za-z0-9+/=]+$'; then
+                ONE=$(printf '%s' "$RAW" | tr -d '\r\n')
+                printf '%s\n%s\n' "untrusted comment: tauri signing key" "$ONE" > "$KEY_PATH"
+              else
+                echo "⚠️ TAURI_SIGNING_PRIVATE_KEY format not recognized, skipping signing" >&2
+                exit 0
+              fi
+            fi
+            KEY_B64=$(base64 < "$KEY_PATH" | tr -d '\r\n')
+            echo "TAURI_SIGNING_PRIVATE_KEY=$KEY_B64" >> "$GITHUB_ENV"
+            if [ -n "${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}" ]; then
+              echo "TAURI_SIGNING_PRIVATE_KEY_PASSWORD=${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}" >> "$GITHUB_ENV"
+            fi
+            echo "✅ Tauri signing key prepared"
+          else
+            echo "⚠️ TAURI_SIGNING_PRIVATE_KEY not set, skipping signing"
+          fi
+
+      - name: Import Apple signing certificate (optional)
+        if: runner.os == 'macOS' && env.APPLE_CERTIFICATE != ''
+        shell: bash
+        run: |
+          set -euo pipefail
+          CERT_PATH="$RUNNER_TEMP/certificate.p12"
+          printf '%s' "${{ secrets.APPLE_CERTIFICATE }}" | (base64 --decode 2>/dev/null || base64 -D) > "$CERT_PATH"
+
+          ORIGINAL_DEFAULT_KEYCHAIN=$(security default-keychain -d user | tr -d '"' | xargs)
+          echo "ORIGINAL_DEFAULT_KEYCHAIN=$ORIGINAL_DEFAULT_KEYCHAIN" >> "$GITHUB_ENV"
+
+          KEYCHAIN_PATH="$RUNNER_TEMP/build.keychain-db"
+          security create-keychain -p "${{ secrets.KEYCHAIN_PASSWORD }}" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security default-keychain -s "$KEYCHAIN_PATH"
+          security unlock-keychain -p "${{ secrets.KEYCHAIN_PASSWORD }}" "$KEYCHAIN_PATH"
+
+          security import "$CERT_PATH" \
+            -k "$KEYCHAIN_PATH" \
+            -P "${{ secrets.APPLE_CERTIFICATE_PASSWORD }}" \
+            -T /usr/bin/codesign \
+            -T /usr/bin/security
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "${{ secrets.KEYCHAIN_PASSWORD }}" "$KEYCHAIN_PATH"
+
+          IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN_PATH" \
+            | grep "Developer ID Application" | grep -oE '"[^"]+"' | head -1 | tr -d '"')
+          if [ -z "$IDENTITY" ]; then
+            echo "⚠️ No 'Developer ID Application' identity found, building without signing" >&2
+          else
+            echo "✅ Signing identity: $IDENTITY"
+            echo "APPLE_SIGNING_IDENTITY=$IDENTITY" >> "$GITHUB_ENV"
+          fi
+
+          rm -f "$CERT_PATH"
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+
+      - name: Build Tauri App (macOS)
+        if: runner.os == 'macOS'
+        shell: bash
+        timeout-minutes: 60
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ env.APPLE_SIGNING_IDENTITY }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          set -euo pipefail
+          max_attempts=3
+          for attempt in $(seq 1 "$max_attempts"); do
+            echo "=== macOS build/notarization attempt ${attempt}/${max_attempts} ==="
+            if pnpm tauri build --target ${{ matrix.target }}; then
+              echo "✅ macOS build/notarization succeeded"
+              exit 0
+            fi
+
+            if [ "$attempt" -eq "$max_attempts" ]; then
+              echo "❌ macOS build/notarization failed after ${max_attempts} attempts" >&2
+              exit 1
+            fi
+
+            sleep_seconds=$((attempt * 60))
+            echo "⚠️ macOS build/notarization failed, retrying in ${sleep_seconds}s..."
+            sleep "$sleep_seconds"
+          done
+
+      - name: Prepare macOS Assets
+        if: runner.os == 'macOS'
+        shell: bash
+        run: |
+          set -euxo pipefail
+          mkdir -p release-assets
+          VERSION="${GITHUB_REF_NAME#v}"
+          ARCH="${{ matrix.arch }}"
+
+          # Locate bundle artifacts
+          BUNDLE_DIR="src-tauri/target/${{ matrix.target }}/release/bundle"
+          APP_PATH=$(find "$BUNDLE_DIR/macos" -maxdepth 1 -name "*.app" -type d 2>/dev/null | head -1 || true)
+          DMG_PATH=$(find "$BUNDLE_DIR/dmg" -maxdepth 1 -name "*.dmg" -type f 2>/dev/null | head -1 || true)
+
+          if [ -z "$APP_PATH" ] && [ -z "$DMG_PATH" ]; then
+            echo "❌ No macOS artifacts found in $BUNDLE_DIR" >&2
+            exit 1
+          fi
+
+          # Use .app if no .dmg
+          if [ -z "$DMG_PATH" ] && [ -n "$APP_PATH" ]; then
+            NEW_ZIP="MCP_Manager-${VERSION}-macOS-${ARCH}.zip"
+            ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "release-assets/$NEW_ZIP"
+            echo "macOS zip ready: $NEW_ZIP"
+          fi
+
+          # Use .dmg if available
+          if [ -n "$DMG_PATH" ]; then
+            NEW_DMG="MCP_Manager-${VERSION}-macOS-${ARCH}.dmg"
+            cp "$DMG_PATH" "release-assets/$NEW_DMG"
+            echo "macOS dmg ready: $NEW_DMG"
+          fi
+
+      - name: Upload release artifacts to workflow
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-assets-macos-${{ matrix.arch }}
+          path: release-assets/*
+          if-no-files-found: warn
+
+      - name: Clean up Apple signing keychain
+        if: runner.os == 'macOS' && always() && env.ORIGINAL_DEFAULT_KEYCHAIN != ''
+        shell: bash
+        run: |
+          security default-keychain -s "$ORIGINAL_DEFAULT_KEYCHAIN" || true
+          if [ -f "$RUNNER_TEMP/build.keychain-db" ]; then
+            security delete-keychain "$RUNNER_TEMP/build.keychain-db" || true
+          fi
+
+  publish-release:
+    name: Publish GitHub Release
+    runs-on: ubuntu-22.04
+    needs: release
+    permissions:
+      contents: write
+    steps:
+      - name: Download built release artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: release-assets-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: List downloaded release artifacts
+        shell: bash
+        run: |
+          set -euo pipefail
+          ls -la release-assets || echo "No artifacts found"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: MCP Manager ${{ github.ref_name }}
+          body: |
+            ## MCP Manager ${{ github.ref_name }}
+
+            Universal MCP Server Manager for AI CLI tools.
+
+            ### 🖥️ System Support
+
+            | System | Status |
+            |--------|--------|
+            | **macOS 12+** | ✅ Supported |
+            | **Linux** | 🚧 In Progress |
+            | **Windows 10+** | 🚧 In Progress |
+
+            ### 📥 Downloads
+
+            - **macOS (Apple Silicon)**: `MCP_Manager-${{ github.ref_name }}-macOS-aarch64.dmg`
+            - **macOS (Intel)**: `MCP_Manager-${{ github.ref_name }}-macOS-x86_64.dmg`
+
+            > Linux and Windows support coming soon!
+
+            ### ✨ Features
+
+            - Unified management for 8+ AI CLI tools
+            - JSON paste mode with smart parsing
+            - Built-in connection testing
+            - Real-time sync to configuration files
+
+            ---
+            macOS versions are code-signed and notarized by Apple (if signing secrets configured).
+          files: release-assets/*
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

@@ -1,0 +1,25 @@
+# 依赖
+node_modules/
+target/
+
+# 构建输出
+dist/
+build/
+
+# Tauri
+src-tauri/icons/
+src-tauri/target/
+
+# 数据库
+*.db
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# 日志
+*.log
