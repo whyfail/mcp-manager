@@ -12,17 +12,7 @@ env:
 jobs:
   release:
     name: Build and Release
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - os: macos-14
-            target: aarch64-apple-darwin
-            arch: aarch64
-          - os: macos-13
-            target: x86_64-apple-darwin
-            arch: x86_64
-    runs-on: ${{ matrix.os }}
+    runs-on: macos-14
     permissions:
       contents: write
     steps:
@@ -43,9 +33,7 @@ jobs:
           cache: 'pnpm'
 
       - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: ${{ matrix.target }}
+        uses: actions-rust-lang/setup-rust-toolchain@v1
 
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
@@ -131,7 +119,7 @@ jobs:
           max_attempts=3
           for attempt in $(seq 1 "$max_attempts"); do
             echo "=== macOS build/notarization attempt ${attempt}/${max_attempts} ==="
-            if pnpm tauri build --target ${{ matrix.target }}; then
+            if pnpm tauri build; then
               echo "✅ macOS build/notarization succeeded"
               exit 0
             fi
@@ -147,16 +135,15 @@ jobs:
           done
 
       - name: Prepare macOS Assets
-        if: runner.os == 'macOS'
         shell: bash
         run: |
           set -euxo pipefail
           mkdir -p release-assets
           VERSION="${GITHUB_REF_NAME#v}"
-          ARCH="${{ matrix.arch }}"
+          ARCH="aarch64"
 
           # Locate bundle artifacts
-          BUNDLE_DIR="src-tauri/target/${{ matrix.target }}/release/bundle"
+          BUNDLE_DIR="src-tauri/target/aarch64-apple-darwin/release/bundle"
           APP_PATH=$(find "$BUNDLE_DIR/macos" -maxdepth 1 -name "*.app" -type d 2>/dev/null | head -1 || true)
           DMG_PATH=$(find "$BUNDLE_DIR/dmg" -maxdepth 1 -name "*.dmg" -type f 2>/dev/null | head -1 || true)
 
@@ -182,7 +169,7 @@ jobs:
       - name: Upload release artifacts to workflow
         uses: actions/upload-artifact@v4
         with:
-          name: release-assets-macos-${{ matrix.arch }}
+          name: release-assets-macos-aarch64
           path: release-assets/*
           if-no-files-found: warn
 
@@ -205,7 +192,7 @@ jobs:
       - name: Download built release artifacts
         uses: actions/download-artifact@v4
         with:
-          pattern: release-assets-*
+          pattern: release-assets-macos-aarch64
           path: release-assets
           merge-multiple: true
 
