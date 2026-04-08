@@ -4,6 +4,12 @@ on:
   push:
     tags:
       - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release Version (e.g., 1.0.0)'
+        required: true
+        default: '1.0.0'
 
 env:
   CARGO_INCREMENTAL: 0
@@ -20,6 +26,17 @@ jobs:
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Setup Version
+        id: get_version
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION="${GITHUB_REF_NAME#v}"
+          fi
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "VERSION is $VERSION"
 
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
@@ -136,10 +153,11 @@ jobs:
 
       - name: Prepare macOS Assets
         shell: bash
+        env:
+          VERSION: ${{ steps.get_version.outputs.VERSION }}
         run: |
           set -euxo pipefail
           mkdir -p release-assets
-          VERSION="${GITHUB_REF_NAME#v}"
           ARCH="aarch64"
 
           # Recursively search for artifacts to handle different target paths
@@ -211,13 +229,23 @@ jobs:
           set -euo pipefail
           ls -la release-assets || echo "No artifacts found"
 
+      - name: Get Version
+        id: get_version_release
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION="${GITHUB_REF_NAME#v}"
+          fi
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ github.ref_name }}
-          name: MCP Manager ${{ github.ref_name }}
+          tag_name: v${{ steps.get_version_release.outputs.VERSION }}
+          name: MCP Manager v${{ steps.get_version_release.outputs.VERSION }}
           body: |
-            ## MCP Manager ${{ github.ref_name }}
+            ## MCP Manager v${{ steps.get_version_release.outputs.VERSION }}
 
             Universal MCP Server Manager for AI CLI tools.
 
@@ -231,7 +259,7 @@ jobs:
 
             ### 📥 Downloads
 
-            - **macOS (Apple Silicon)**: `MCP_Manager-${{ github.ref_name }}-macOS-aarch64.dmg`
+            - **macOS (Apple Silicon)**: `MCP_Manager-${{ steps.get_version_release.outputs.VERSION }}-macOS-aarch64.dmg`
 
             > Linux and Windows support coming soon!
 
