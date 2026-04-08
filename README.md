@@ -62,7 +62,7 @@ MCP Manager 是一款**通用的 Model Context Protocol (MCP) 服务器管理工
 
 ### macOS 安装
 
-从 [Releases](https://github.com) 页面下载最新的 `MCP Manager_x.x.x_aarch64.dmg` 安装包：
+从 [Releases](https://github.com/whyfail/mcp-manager/releases) 页面下载最新的 `MCP Manager_x.x.x_aarch64.dmg` 安装包：
 
 ```bash
 # 挂载 DMG

@@ -62,7 +62,7 @@ MCP Manager is a **universal Model Context Protocol (MCP) server management tool
 
 ### macOS Installation
 
-Download the latest `MCP Manager_x.x.x_aarch64.dmg` installer from the [Releases](https://github.com) page:
+Download the latest `MCP Manager_x.x.x_aarch64.dmg` installer from the [Releases](https://github.com/whyfail/mcp-manager/releases) page:
 
 ```bash
 # Mount DMG
