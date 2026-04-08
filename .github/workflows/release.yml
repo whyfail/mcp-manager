@@ -16,8 +16,8 @@ env:
   RUST_BACKTRACE: 1
 
 jobs:
-  release:
-    name: Build and Release
+  release-macos:
+    name: Build and Release (macOS)
     runs-on: macos-14
     permissions:
       contents: write
@@ -99,18 +99,10 @@ jobs:
           
           APP_PATH=$(find "$BUNDLE_DIR" -name "*.app" -type d 2>/dev/null | head -1 || true)
           DMG_PATH=$(find "$BUNDLE_DIR" -name "*.dmg" -type f 2>/dev/null | head -1 || true)
-          ZIP_PATH=$(find "$BUNDLE_DIR" -name "*.zip" -type f 2>/dev/null | head -1 || true)
 
-          if [ -z "$APP_PATH" ] && [ -z "$DMG_PATH" ] && [ -z "$ZIP_PATH" ]; then
+          if [ -z "$APP_PATH" ] && [ -z "$DMG_PATH" ]; then
             echo "❌ No macOS artifacts found in $BUNDLE_DIR" >&2
             exit 1
-          fi
-
-          # If only .app is found, zip it
-          if [ -z "$DMG_PATH" ] && [ -z "$ZIP_PATH" ] && [ -n "$APP_PATH" ]; then
-            NEW_ZIP="MCP_Manager-${VERSION}-macOS-${ARCH}.zip"
-            ditto -c -k --sequesterRsrc --keepParent "$APP_PATH" "release-assets/$NEW_ZIP"
-            echo "✅ macOS zip created: $NEW_ZIP"
           fi
 
           # Copy .dmg if available
@@ -127,17 +119,92 @@ jobs:
           path: release-assets/*
           if-no-files-found: warn
 
-  publish-release:
-    name: Publish GitHub Release
-    runs-on: ubuntu-22.04
-    needs: release
+  release-windows:
+    name: Build and Release (Windows)
+    runs-on: windows-latest
     permissions:
       contents: write
     steps:
-      - name: Download built release artifacts
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Version
+        id: get_version
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            VERSION="${{ github.event.inputs.version }}"
+          else
+            VERSION="${GITHUB_REF_NAME#v}"
+          fi
+          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
+          echo "VERSION is $VERSION"
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'pnpm'
+
+      - name: Install Rust stable
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install frontend dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build Tauri App (Windows)
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          pnpm tauri build --bundles msi
+
+      - name: Prepare Windows Assets
+        shell: pwsh
+        env:
+          VERSION: ${{ steps.get_version.outputs.VERSION }}
+        run: |
+          New-Item -ItemType Directory -Force -Path release-assets
+          $msi = Get-ChildItem -Path 'src-tauri/target/release/bundle/msi' -Recurse -Include *.msi -ErrorAction SilentlyContinue | Select-Object -First 1
+          if ($null -ne $msi) {
+            $dest = "MCP_Manager-$env:VERSION-Windows-x64.msi"
+            Copy-Item $msi.FullName (Join-Path release-assets $dest)
+            Write-Host "Windows msi ready: $dest"
+          } else {
+            Write-Warning 'No Windows MSI installer found'
+          }
+
+      - name: Upload release artifacts to workflow
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-assets-windows-x64
+          path: release-assets/*
+          if-no-files-found: warn
+
+  publish-release:
+    name: Publish GitHub Release
+    runs-on: ubuntu-22.04
+    needs: [release-macos, release-windows]
+    permissions:
+      contents: write
+    steps:
+      - name: Download macOS artifacts
         uses: actions/download-artifact@v4
         with:
-          pattern: release-assets-macos-aarch64
+          pattern: release-assets-macos-*
+          path: release-assets
+          merge-multiple: true
+
+      - name: Download Windows artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: release-assets-windows-*
           path: release-assets
           merge-multiple: true
 
@@ -172,14 +239,13 @@ jobs:
             | System | Status |
             |--------|--------|
             | **macOS 12+** | ✅ Supported |
+            | **Windows 10+** | ✅ Supported |
             | **Linux** | 🚧 In Progress |
-            | **Windows 10+** | 🚧 In Progress |
 
             ### 📥 Downloads
 
             - **macOS (Apple Silicon)**: `MCP_Manager-${{ steps.get_version_release.outputs.VERSION }}-macOS-aarch64.dmg`
-
-            > Linux and Windows support coming soon!
+            - **Windows (x64)**: `MCP_Manager-${{ steps.get_version_release.outputs.VERSION }}-Windows-x64.msi`
 
             ### ✨ Features
 
@@ -187,9 +253,6 @@ jobs:
             - JSON paste mode with smart parsing
             - Built-in connection testing
             - Real-time sync to configuration files
-
-            ---
-            macOS versions are code-signed and notarized by Apple (if signing secrets configured).
           files: release-assets/*
           draft: false
           prerelease: false

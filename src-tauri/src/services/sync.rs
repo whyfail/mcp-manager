@@ -1,14 +1,15 @@
 use indexmap::IndexMap;
 use std::fs;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use crate::database::McpServer;
 use crate::error::AppError;
 use crate::mcp::AppType;
+use crate::agents::resolve_path;
 
 /// 同步指定应用的 MCP 配置到其配置文件
 pub fn sync_app_config(app: &AppType, servers: &[McpServer]) -> Result<(), AppError> {
-    let config_path = expand_home(&get_config_path_for_app(app)?);
+    let config_path = resolve_path(&get_config_path_for_app(app)?);
 
     if matches!(app, AppType::Codex) {
         return sync_codex_config(&config_path, servers);
@@ -52,7 +53,7 @@ pub fn sync_app_config(app: &AppType, servers: &[McpServer]) -> Result<(), AppEr
     Ok(())
 }
 
-fn sync_codex_config(path: &str, servers: &[McpServer]) -> Result<(), AppError> {
+fn sync_codex_config(path: &PathBuf, servers: &[McpServer]) -> Result<(), AppError> {
     // 读取 TOML
     let mut config: toml::Value = if Path::new(path).exists() {
         let content = fs::read_to_string(path)
@@ -156,31 +157,40 @@ pub fn sync_all_live_configs(servers: &IndexMap<String, McpServer>) -> Result<()
 }
 
 fn get_config_path_for_app(app: &AppType) -> Result<String, AppError> {
-    match app {
-        AppType::QwenCode => Ok("~/.qwen/settings.json".to_string()),
-        AppType::Claude => Ok("~/.claude.json".to_string()),
-        AppType::Codex => Ok("~/.codex/config.toml".to_string()),
-        AppType::Gemini => Ok("~/.gemini/settings.json".to_string()),
-        AppType::OpenCode => Ok("~/.config/opencode/opencode.json".to_string()),
-        AppType::OpenClaw => Ok("~/.openclaw/openclaw.json".to_string()),
-        AppType::Trae => Ok("~/Library/Application Support/Trae/User/mcp.json".to_string()),
-        AppType::TraeCn => Ok("~/Library/Application Support/Trae CN/User/mcp.json".to_string()),
-        AppType::Qoder => Ok("~/.qoder/settings.json".to_string()),
-        AppType::CodeBuddy => Ok("~/.codebuddy/mcp.json".to_string()),
-    }
+    Ok(match app {
+        AppType::QwenCode => "~/.qwen/settings.json",
+        AppType::Claude => {
+            if cfg!(windows) { "%USERPROFILE%\\.claude.json" } else { "~/.claude.json" }
+        },
+        AppType::Codex => {
+            if cfg!(windows) { "%USERPROFILE%\\.codex\\config.toml" } else { "~/.codex/config.toml" }
+        },
+        AppType::Gemini => {
+            if cfg!(windows) { "%USERPROFILE%\\.gemini\\settings.json" } else { "~/.gemini/settings.json" }
+        },
+        AppType::OpenCode => {
+            if cfg!(windows) { "%USERPROFILE%\\.config\\opencode\\opencode.json" } else { "~/.config/opencode/opencode.json" }
+        },
+        AppType::OpenClaw => {
+            if cfg!(windows) { "%USERPROFILE%\\.openclaw\\openclaw.json" } else { "~/.openclaw/openclaw.json" }
+        },
+        AppType::Trae => {
+            if cfg!(windows) { "%APPDATA%\\Trae\\User\\mcp.json" } else { "~/Library/Application Support/Trae/User/mcp.json" }
+        },
+        AppType::TraeCn => {
+            if cfg!(windows) { "%APPDATA%\\Trae CN\\User\\mcp.json" } else { "~/Library/Application Support/Trae CN/User/mcp.json" }
+        },
+        AppType::Qoder => {
+            if cfg!(windows) { "%USERPROFILE%\\.qoder\\settings.json" } else { "~/.qoder/settings.json" }
+        },
+        AppType::CodeBuddy => {
+            if cfg!(windows) { "%USERPROFILE%\\.codebuddy.json" } else { "~/.codebuddy.json" }
+        },
+    }.to_string())
 }
 
-fn expand_home(path: &str) -> String {
-    if let Some(stripped) = path.strip_prefix("~/") {
-        if let Some(home) = dirs::home_dir() {
-            return home.join(stripped).to_string_lossy().to_string();
-        }
-    }
-    path.to_string()
-}
-
-fn atomic_write(path: &str, content: &str) -> Result<(), AppError> {
-    let temp_path = format!("{}.tmp", path);
+fn atomic_write(path: &PathBuf, content: &str) -> Result<(), AppError> {
+    let temp_path = path.with_extension("tmp");
     fs::write(&temp_path, content)
         .map_err(|e| AppError::Io(std::io::Error::new(std::io::ErrorKind::Other, e.to_string())))?;
     fs::rename(&temp_path, path)

@@ -6,6 +6,7 @@ use std::path::Path;
 
 use crate::database::{McpApps, McpServer, McpServerSpec};
 use crate::mcp::AppType;
+use crate::agents::{get_agent_config_paths, resolve_path};
 
 /// 导入结果
 pub struct ImportResult {
@@ -15,19 +16,18 @@ pub struct ImportResult {
 }
 
 /// 尝试从指定路径导入 MCP 配置
-pub fn import_from_path(app: AppType, path: &str) -> Option<ImportResult> {
-    let expanded_path = expand_home(path);
-    
-    if !Path::new(&expanded_path).exists() {
+pub fn import_from_path(app: AppType, path: &PathBuf) -> Option<ImportResult> {
+    if !path.exists() {
         return None;
     }
 
-    let content = match fs::read_to_string(&expanded_path) {
+    let content = match fs::read_to_string(path) {
         Ok(c) => c,
         Err(_) => return None,
     };
 
-    let servers = if path.ends_with(".toml") {
+    let is_toml = path.extension().and_then(|s| s.to_str()) == Some("toml");
+    let servers = if is_toml {
         parse_mcp_toml(&content, &app)
     } else {
         parse_mcp_json(&content, &app)
@@ -282,35 +282,27 @@ fn expand_home(path: &str) -> String {
 pub fn import_all() -> IndexMap<String, McpServer> {
     let mut all_servers: IndexMap<String, McpServer> = IndexMap::new();
 
-    // 正确的配置文件路径（参考 cc-switch 项目 和官方文档）
-    let sources = [
-        (AppType::QwenCode, "~/.qwen/settings.json"),
-        (AppType::Claude, "~/.claude.json"),
-        (AppType::Codex, "~/.codex/config.toml"),
-        (AppType::Gemini, "~/.gemini/settings.json"),
-        (AppType::OpenCode, "~/.config/opencode/opencode.json"),
-        (AppType::OpenClaw, "~/.openclaw/openclaw.json"),
-        (AppType::Trae, "~/Library/Application Support/Trae/User/mcp.json"),
-        (AppType::TraeCn, "~/Library/Application Support/Trae CN/User/mcp.json"),
-        (AppType::Qoder, "~/.qoder/settings.json"),
-        (AppType::CodeBuddy, "~/.codebuddy/mcp.json"),
-    ];
-
-    for (app, path) in sources {
-        if let Some(result) = import_from_path(app.clone(), path) {
-            for (id, server) in result.servers {
-                // 如果服务器已存在，合并应用状态
-                if let Some(existing) = all_servers.get_mut(&id) {
-                    // 启用新导入的应用
-                    existing.apps.set_enabled_for(&app, true);
-                    // 添加来源标签
-                    let tag = format!("imported-from-{}", app.name());
-                    if !existing.tags.contains(&tag) {
-                        existing.tags.push(tag);
+    // Iterate through all apps and check their OS-specific paths
+    for app in AppType::all() {
+        let paths = get_agent_config_paths(&app);
+        
+        // Check each possible path for this app
+        for path in &paths {
+            if let Some(result) = import_from_path(app.clone(), path) {
+                for (id, server) in result.servers {
+                    // If server already exists, merge the app status
+                    if let Some(existing) = all_servers.get_mut(&id) {
+                        existing.apps.set_enabled_for(&app, true);
+                        let tag = format!("imported-from-{}", app.name());
+                        if !existing.tags.contains(&tag) {
+                            existing.tags.push(tag);
+                        }
+                    } else {
+                        all_servers.insert(id, server);
                     }
-                } else {
-                    all_servers.insert(id, server);
                 }
+                // Break after finding the first valid path for this app
+                break;
             }
         }
     }
