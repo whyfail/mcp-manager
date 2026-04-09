@@ -124,7 +124,7 @@ function App() {
 
         {/* 版本 */}
         <div className="px-6 py-4 text-center">
-          <p className="text-xs text-[hsl(var(--muted-foreground))]">v1.0.2</p>
+          <p className="text-xs text-[hsl(var(--muted-foreground))]">v1.0.3</p>
         </div>
       </aside>
 
@@ -237,7 +237,7 @@ const SettingsTab: React.FC = () => {
               )}
             </div>
             <p className="text-xs text-[hsl(var(--muted-foreground))] mt-3">
-              当前版本 v1.0.2 · 更新源：GitHub Releases
+              当前版本 v1.0.3 · 更新源：GitHub Releases
             </p>
           </section>
 
@@ -320,7 +320,7 @@ const AboutTab: React.FC = () => {
               <div>
                 <h3 className="text-base font-medium">MCP Manager</h3>
                 <p className="text-xs text-[hsl(var(--muted-foreground))] mt-0.5">
-                  v1.0.2 · 通用 MCP 配置管理工具
+                  v1.0.3 · 通用 MCP 配置管理工具
                 </p>
               </div>
               <button
