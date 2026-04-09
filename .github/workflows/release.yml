@@ -117,10 +117,21 @@ jobs:
           fi
 
           # Copy signature file if available
+          # Search entire target directory for .dmg.sig file
+          SIG_FILE=$(find src-tauri/target -name "*.dmg.sig" -type f 2>/dev/null | head -1)
           if [ -n "$SIG_FILE" ]; then
-            cp "$SIG_FILE" "release-assets/$(basename "$SIG_FILE")"
-            echo "✅ signature file ready"
+            cp "$SIG_FILE" "release-assets/MCP_Manager-${VERSION}-macOS-aarch64.dmg.sig"
+            echo "✅ signature file ready: $(basename "$SIG_FILE")"
+            echo "   from: $SIG_FILE"
+          else
+            echo "⚠️ No .dmg.sig file found"
+            echo "   Searching for any .sig files..."
+            find src-tauri/target -name "*.sig" -type f 2>/dev/null | while read -r f; do echo "   Found: $f"; done || echo "   None found"
           fi
+
+          # Debug: list all files in bundle directory
+          echo "📦 Bundle directory contents:"
+          find "$BUNDLE_DIR" -type f 2>/dev/null | head -20 || true
 
       - name: Upload release artifacts to workflow
         uses: actions/upload-artifact@v4
