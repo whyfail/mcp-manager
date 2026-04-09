@@ -3,6 +3,19 @@ use tauri::State;
 
 use crate::app_state::AppState;
 
+/// 获取当前应用版本
+#[tauri::command]
+pub async fn get_version(app: tauri::AppHandle) -> Result<VersionInfo, String> {
+    Ok(VersionInfo {
+        version: app.package_info().version.to_string(),
+    })
+}
+
+#[derive(Serialize)]
+pub struct VersionInfo {
+    pub version: String,
+}
+
 /// 获取应用配置路径
 #[tauri::command]
 pub async fn get_app_configs(

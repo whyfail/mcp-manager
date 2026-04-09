@@ -162,6 +162,14 @@ const SettingsTab: React.FC = () => {
   const [isLatest, setIsLatest] = useState(false);
   const [installing, setInstalling] = useState(false);
   const [showModal, setShowModal] = useState(false);
+  const [appVersion, setAppVersion] = useState("1.0.3");
+
+  // 获取当前应用版本
+  useEffect(() => {
+    invoke<{ version: string }>("get_version")
+      .then((res) => setAppVersion(res.version))
+      .catch(() => {});
+  }, []);
 
   const checkUpdate = async () => {
     setChecking(true);
@@ -238,7 +246,7 @@ const SettingsTab: React.FC = () => {
               )}
             </div>
             <p className="text-xs text-[hsl(var(--muted-foreground))] mt-3">
-              当前版本 v1.0.3 · 更新源：GitHub Releases
+              当前版本 v{appVersion} · 更新源：GitHub Releases
             </p>
           </section>
 

@@ -74,6 +74,8 @@ pub fn run() {
             // 更新命令
             commands::update::check_update,
             commands::update::install_update,
+            // 应用信息命令
+            commands::app::get_version,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
