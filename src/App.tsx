@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-shell";
+import { useAppVersion } from "@/hooks/useAppVersion";
 
 type Tab = "mcp" | "settings" | "about";
 type Theme = "light" | "dark" | "system";
@@ -23,6 +24,7 @@ type Theme = "light" | "dark" | "system";
 function App() {
   const [activeTab, setActiveTab] = useState<Tab>("mcp");
   const [theme, setTheme] = useState<Theme>("system");
+  const appVersion = useAppVersion();
 
   // 应用主题
   useEffect(() => {
@@ -124,7 +126,7 @@ function App() {
 
         {/* 版本 */}
         <div className="px-6 py-4 text-center">
-          <p className="text-xs text-[hsl(var(--muted-foreground))]">v1.0.3</p>
+          <p className="text-xs text-[hsl(var(--muted-foreground))]">v{appVersion}</p>
         </div>
       </aside>
 
@@ -162,14 +164,7 @@ const SettingsTab: React.FC = () => {
   const [isLatest, setIsLatest] = useState(false);
   const [installing, setInstalling] = useState(false);
   const [showModal, setShowModal] = useState(false);
-  const [appVersion, setAppVersion] = useState("1.0.3");
-
-  // 获取当前应用版本
-  useEffect(() => {
-    invoke<{ version: string }>("get_version")
-      .then((res) => setAppVersion(res.version))
-      .catch(() => {});
-  }, []);
+  const appVersion = useAppVersion();
 
   const checkUpdate = async () => {
     setChecking(true);
@@ -300,6 +295,8 @@ const SettingsTab: React.FC = () => {
 
 // 关于标签页
 const AboutTab: React.FC = () => {
+  const appVersion = useAppVersion();
+
   const features = [
     "统一管理多个 AI CLI 工具的 MCP 服务器",
     "一键启用/禁用特定应用的服务器",
@@ -329,7 +326,7 @@ const AboutTab: React.FC = () => {
               <div>
                 <h3 className="text-base font-medium">MCP Manager</h3>
                 <p className="text-xs text-[hsl(var(--muted-foreground))] mt-0.5">
-                  v1.0.3 · 通用 MCP 配置管理工具
+                  v{appVersion}· 通用 MCP 配置管理工具
                 </p>
               </div>
               <button
