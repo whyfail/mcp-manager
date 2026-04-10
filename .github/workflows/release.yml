@@ -333,7 +333,7 @@ jobs:
           APP_TAR_FILE=$(find release-assets -name "*.app.tar.gz" -type f | head -1)
           MSI_ZIP_FILE=$(find release-assets -name "*.msi.zip" -type f | head -1)
           APP_TAR_SIG=$(find release-assets -name "*.app.tar.gz.sig" -type f | head -1)
-          MSI_ZIP_SIG=$(find release-assets -name "*.msi.zip.sig" -type f | head -1)
+          MSI_ZIP_SIG=$(find release-assets -name "*.msi.sig" -type f | head -1)
 
           APP_TAR_SIZE=0
           MSI_ZIP_SIZE=0
