@@ -353,7 +353,7 @@ jobs:
             MSI_ZIP_SIG_CONTENT=$(cat "$MSI_ZIP_SIG")
           fi
 
-          DOWNLOAD_BASE="https://github.com/whyfail/mcp-manager/releases/download/v${VERSION}"
+          DOWNLOAD_BASE="https://github.com/whyfail/ai-tool-manager/releases/download/v${VERSION}"
 
           # Build latest.json using jq to avoid YAML/shell conflicts
           # Note: URLs point to updater bundles (.app.tar.gz and .msi.zip), not installers
@@ -364,7 +364,7 @@ jobs:
             --arg msi_zip_sig "${MSI_ZIP_SIG_CONTENT}" \
             --arg app_tar_url "${DOWNLOAD_BASE}/MCP_Manager-${VERSION}-macOS-aarch64.app.tar.gz" \
             --arg msi_zip_url "${DOWNLOAD_BASE}/MCP_Manager-${VERSION}-Windows-x64.msi.zip" \
-            --arg notes "See changelog at https://github.com/whyfail/mcp-manager/releases/tag/v${VERSION}" \
+            --arg notes "See changelog at https://github.com/whyfail/ai-tool-manager/releases/tag/v${VERSION}" \
             '{
               version: $ver,
               notes: $notes,
@@ -388,11 +388,11 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: v${{ steps.get_version_release.outputs.VERSION }}
-          name: MCP Manager v${{ steps.get_version_release.outputs.VERSION }}
+          name: AI Tool Manager v${{ steps.get_version_release.outputs.VERSION }}
           body: |
-            ## MCP Manager v${{ steps.get_version_release.outputs.VERSION }}
+            ## AI Tool Manager v${{ steps.get_version_release.outputs.VERSION }}
 
-            Universal MCP Server Manager for AI CLI tools.
+            Universal MCP Server & Skills Manager for AI CLI tools.
 
             ### 🖥️ System Support
 
@@ -404,14 +404,18 @@ jobs:
 
             ### 📥 Downloads
 
-            - **macOS (Apple Silicon)**: `MCP_Manager-${{ steps.get_version_release.outputs.VERSION }}-macOS-aarch64.dmg`
-            - **Windows (x64)**: `MCP_Manager-${{ steps.get_version_release.outputs.VERSION }}-Windows-x64.msi`
+            - **macOS (Apple Silicon)**: `AI_Tool_Manager-${{ steps.get_version_release.outputs.VERSION }}-macOS-aarch64.dmg`
+            - **Windows (x64)**: `AI_Tool_Manager-${{ steps.get_version_release.outputs.VERSION }}-Windows-x64.msi`
 
             **Note**: Auto-updater uses `.app.tar.gz` (macOS) and `.msi.zip` (Windows) bundles which are included in this release.
 
             ### ✨ Features
 
-            - Unified management for 8+ AI CLI tools
+            - Unified management for 10+ AI CLI tools
+            - Skills management panel with batch sync
+            - Git repository installation for Skills
+            - Online Skills search from skills.sh
+            - Featured Skills recommendations
             - JSON paste mode with smart parsing
             - Built-in connection testing
             - Real-time sync to configuration files

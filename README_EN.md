@@ -62,14 +62,14 @@ AI Toolkit is a **universal Model Context Protocol (MCP) server management tool*
 
 ### macOS Installation
 
-Download the latest `AI Toolkit_x.x.x_aarch64.dmg` installer from the [Releases](https://github.com/whyfail/mcp-manager/releases) page:
+Download the latest `AI Toolkit_x.x.x_aarch64.dmg` installer from the [Releases](https://github.com/whyfail/ai-tool-manager/releases) page:
 
 ```bash
 # Mount DMG
-hdiutil attach MCP\ Manager_*.dmg
+hdiutil attach AI\ Toolkit_*.dmg
 
 # Drag to Applications folder
-cp -R /Volumes/MCP\ Manager/MCP\ Manager.app /Applications/
+cp -R /Volumes/AI\ Toolkit/AI\ Toolkit.app /Applications/
 ```
 
 ### ⚠️ macOS Security Warning (Required for First Run)

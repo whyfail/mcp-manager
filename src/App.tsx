@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { Toaster } from "sonner";
 import UnifiedMcpPanel from "@/components/mcp/UnifiedMcpPanel";
 import UpdateModal from "@/components/mcp/UpdateModal";
 import SkillsPanel from "@/components/skills/SkillsPanel";
@@ -140,6 +141,9 @@ function App() {
         {activeTab === "settings" && <SettingsTab />}
         {activeTab === "about" && <AboutTab />}
       </main>
+
+      {/* Toast 通知 */}
+      <Toaster position="top-right" richColors closeButton />
     </div>
   );
 }
@@ -258,7 +262,15 @@ const SettingsTab: React.FC = () => {
                   数据库路径
                 </p>
                 <code className="block mt-1 px-3 py-2 bg-[hsl(var(--muted))] rounded-lg text-sm font-mono">
-                  ~/.mcp-manager/mcp-manager.db
+                  ~/.ai-tool-manager/ai-tool-manager.db
+                </code>
+              </div>
+              <div>
+                <p className="text-sm font-medium text-[hsl(var(--muted-foreground))]">
+                  Skills 列表路径
+                </p>
+                <code className="block mt-1 px-3 py-2 bg-[hsl(var(--muted))] rounded-lg text-sm font-mono">
+                  ~/.ai-tool-manager/skills/
                 </code>
               </div>
             </div>
@@ -302,13 +314,11 @@ const AboutTab: React.FC = () => {
   const appVersion = useAppVersion();
 
   const features = [
-    "统一管理多个 AI CLI 工具的 MCP 服务器",
-    "一键启用/禁用特定应用的服务器",
-    "从现有配置自动导入",
-    "现代化可视化界面",
-    "SQLite 数据库持久化存储",
-    "支持 10 种 AI 开发工具",
-    "在线自动更新功能",
+    "MCP 服务器统一管理，支持一键启用/禁用",
+    "Skills 技能同步到多个 AI 编程工具",
+    "自动扫描并导入现有工具配置",
+    "跨平台支持（macOS、Windows、Linux）",
+    "本地 SQLite 数据库存储，开箱即用",
   ];
 
   return (
@@ -335,7 +345,7 @@ const AboutTab: React.FC = () => {
               </div>
               <button
                 onClick={() =>
-                  open("https://github.com/whyfail/mcp-manager")
+                  open("https://github.com/whyfail/ai-tool-manager")
                 }
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-[hsl(var(--border))] text-xs font-medium hover:bg-[hsl(var(--muted))] transition-colors"
               >
@@ -345,10 +355,7 @@ const AboutTab: React.FC = () => {
               </button>
             </div>
             <p className="text-sm text-[hsl(var(--muted-foreground))] leading-relaxed">
-              基于 Tauri 2 构建的跨平台桌面应用，用于统一管理多个 AI 编程工具的
-              MCP (Model Context Protocol) 服务器配置。支持 Qwen Code、Claude
-              Code、Codex、Gemini CLI、OpenCode、OpenClaw、Trae、Trae CN、Qoder
-              和 CodeBuddy。
+              一款基于 Tauri 2 构建的跨平台桌面应用，专注于管理 AI 编程工具的 MCP 服务器配置和 Skills 技能同步。兼容 Qwen Code、Claude Code、Codex、Gemini CLI、OpenCode、OpenClaw、Trae、Trae CN、Qoder、CodeBuddy 等主流工具。
             </p>
           </section>
 
@@ -414,7 +421,7 @@ const AboutTab: React.FC = () => {
                 如有问题或建议，欢迎在{" "}
                 <button
                   onClick={() =>
-                    open("https://github.com/whyfail/mcp-manager/issues")
+                    open("https://github.com/whyfail/ai-tool-manager/issues")
                   }
                   className="text-[hsl(var(--primary))] hover:underline inline-flex items-center gap-0.5"
                 >

@@ -1,8 +1,10 @@
 pub mod central_repo;
 pub mod content_hash;
+pub mod featured_skills;
 pub mod git_fetcher;
 pub mod github_download;
 pub mod installer;
+pub mod skills_search;
 pub mod sync_engine;
 
 pub use central_repo::{ensure_central_repo, resolve_central_repo_path};

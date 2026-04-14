@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react';
+import { useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { GitBranch, Folder, RotateCw, Trash2, Sparkles, X, ExternalLink, FileText } from 'lucide-react';
+import { GitBranch, Folder, Trash2, Sparkles, X, FileText, CheckSquare, Square, Github, RefreshCw } from 'lucide-react';
+import { toast } from 'sonner';
 import type { ManagedSkill, ToolOption } from './types';
 
 // 工具颜色映射，与 MCP 面板保持一致
@@ -23,40 +24,49 @@ const appColors: Record<string, string> = {
 interface SkillsListProps {
   skills: ManagedSkill[];
   tools: ToolOption[];
-  syncTargets: Record<string, boolean>;
-  onSyncTargetChange: (toolId: string, checked: boolean) => void;
+  selectedSkills: Set<string>;
+  onSelectionChange: (skillId: string, selected: boolean) => void;
+  onSelectAll: (selected: boolean) => void;
   searchQuery: string;
-  onUpdateSkill: (skill: ManagedSkill) => void;
   onDeleteSkill: (skill: ManagedSkill) => void;
   onDeleteId: string | null;
   onConfirmDelete: () => void;
   onCancelDelete: () => void;
+  onSkillSync?: () => void;
 }
 
 function SkillsList({
   skills,
   tools,
-  syncTargets,
-  onSyncTargetChange,
+  selectedSkills,
+  onSelectionChange,
+  onSelectAll,
   searchQuery,
-  onUpdateSkill,
   onDeleteSkill,
   onDeleteId,
   onConfirmDelete,
   onCancelDelete,
+  onSkillSync,
 }: SkillsListProps) {
   const [detailSkill, setDetailSkill] = useState<ManagedSkill | null>(null);
   const [readmeContent, setReadmeContent] = useState<string | null>(null);
   const [readmeLoading, setReadmeLoading] = useState(false);
-  const filteredSkills = skills.filter(skill => {
-    if (!searchQuery) return true;
-    const query = searchQuery.toLowerCase();
-    return (
-      skill.name.toLowerCase().includes(query) ||
-      skill.central_path.toLowerCase().includes(query) ||
-      skill.source_type.toLowerCase().includes(query)
-    );
-  });
+  const [syncingTool, setSyncingTool] = useState<string | null>(null);
+  const [refreshingSkill, setRefreshingSkill] = useState<string | null>(null);
+  const filteredSkills = skills
+    .filter(skill => {
+      if (!searchQuery) return true;
+      const query = searchQuery.toLowerCase();
+      return (
+        skill.name.toLowerCase().includes(query) ||
+        skill.central_path.toLowerCase().includes(query) ||
+        skill.source_type.toLowerCase().includes(query)
+      );
+    })
+    .sort((a, b) => a.name.toLowerCase().localeCompare(b.name.toLowerCase()));
+
+  const allSelected = filteredSkills.length > 0 && filteredSkills.every(s => selectedSkills.has(s.id));
+  const someSelected = filteredSkills.some(s => selectedSkills.has(s.id)) && !allSelected;
 
   const deleteSkill = onDeleteId ? skills.find(s => s.id === onDeleteId) : null;
 
@@ -67,6 +77,12 @@ function SkillsList({
       case 'local': return '本地';
       default: return type;
     }
+  };
+
+  // 检查 source_ref 是否为 GitHub URL
+  const isGitHubUrl = (sourceRef?: string | null): boolean => {
+    if (!sourceRef) return false;
+    return sourceRef.startsWith('http://') || sourceRef.startsWith('https://');
   };
 
   const handleOpenDetail = async (skill: ManagedSkill) => {
@@ -81,6 +97,62 @@ function SkillsList({
       setReadmeContent(null);
     } finally {
       setReadmeLoading(false);
+    }
+  };
+
+  // 检查某个工具是否已同步到该技能
+  const isToolSynced = (skill: ManagedSkill, toolId: string): boolean => {
+    return skill.targets.some(t => t.tool === toolId);
+  };
+
+  // 切换技能的同步状态
+  const handleToggleSync = async (skill: ManagedSkill, toolId: string, checked: boolean) => {
+    setSyncingTool(`${skill.id}-${toolId}`);
+    try {
+      if (checked) {
+        // 同步到工具
+        await invoke('sync_skill_to_tool', {
+          skillId: skill.id,
+          skillName: skill.name,
+          tool: toolId,
+          sourcePath: skill.central_path,
+        });
+        toast.success(`已同步到 ${toolId}`);
+      } else {
+        // 取消同步 - 只从指定工具目录删除技能文件夹，不删除 central repo
+        await invoke('unsync_skill_from_tool', {
+          skillName: skill.name,
+          tool: toolId,
+        });
+        toast.success(`已从 ${toolId} 移除`);
+      }
+      onSkillSync?.();
+    } catch (err) {
+      console.error('Sync failed:', err);
+      toast.error(`操作失败: ${err}`);
+    } finally {
+      setSyncingTool(null);
+    }
+  };
+
+  // 刷新 Git 技能（从 GitHub 重新拉取）
+  const handleRefreshGitSkill = async (skill: ManagedSkill) => {
+    if (!skill.source_ref) {
+      toast.error('该技能没有 GitHub 地址');
+      return;
+    }
+    setRefreshingSkill(skill.id);
+    try {
+      await invoke('update_skill', {
+        skillId: skill.id,
+      });
+      toast.success(`技能 "${skill.name}" 已刷新`);
+      onSkillSync?.();
+    } catch (err) {
+      console.error('Refresh failed:', err);
+      toast.error(`刷新失败: ${err}`);
+    } finally {
+      setRefreshingSkill(null);
     }
   };
 
@@ -103,16 +175,52 @@ function SkillsList({
             </p>
           </div>
         ) : (
-          filteredSkills.map(skill => (
+          <>
+            {/* 全选栏 */}
+            <div className="flex items-center gap-2 px-3 sm:px-5 py-2 mb-2">
+              <button
+                onClick={() => onSelectAll(!allSelected)}
+                className="flex items-center gap-2 text-sm text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))] transition-colors"
+              >
+                {someSelected ? (
+                  <CheckSquare size={16} className="text-[hsl(var(--primary))]" />
+                ) : allSelected ? (
+                  <CheckSquare size={16} className="text-[hsl(var(--primary))]" />
+                ) : (
+                  <Square size={16} />
+                )}
+                <span>全选</span>
+              </button>
+              {selectedSkills.size > 0 && (
+                <span className="text-xs text-[hsl(var(--muted-foreground))]">
+                  已选择 {selectedSkills.size} 项
+                </span>
+              )}
+            </div>
+            {filteredSkills.map(skill => (
             <div
               key={skill.id}
-              className="rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] hover:border-[hsl(var(--ring))] transition-all duration-150 overflow-hidden"
+              className={`group rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] hover:border-[hsl(var(--ring))] transition-all duration-150 overflow-hidden ${
+                selectedSkills.has(skill.id) ? 'ring-2 ring-[hsl(var(--primary))]' : ''
+              }`}
             >
               {/* 技能头部 */}
               <div className="px-3 sm:px-5 py-3 sm:py-4 flex items-start justify-between gap-3">
                 <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
+                  <button
+                    onClick={() => onSelectionChange(skill.id, !selectedSkills.has(skill.id))}
+                    className="flex-shrink-0"
+                  >
+                    {selectedSkills.has(skill.id) ? (
+                      <CheckSquare size={18} className="text-[hsl(var(--primary))]" />
+                    ) : (
+                      <Square size={18} className="text-[hsl(var(--muted-foreground))]" />
+                    )}
+                  </button>
                   <div className="w-8 h-8 rounded-lg bg-[hsl(var(--primary))] flex items-center justify-center flex-shrink-0">
-                    {skill.source_type === 'git' ? (
+                    {isGitHubUrl(skill.source_ref) ? (
+                      <Github size={16} className="text-white" />
+                    ) : skill.source_type === 'git' ? (
                       <GitBranch size={16} className="text-white" />
                     ) : (
                       <Folder size={16} className="text-white" />
@@ -131,14 +239,17 @@ function SkillsList({
                   </div>
                 </div>
 
-                <div className="flex items-center gap-1 flex-shrink-0">
-                  <button
-                    onClick={() => onUpdateSkill(skill)}
-                    className="p-2 hover:bg-[hsl(var(--muted))] rounded-lg transition-colors"
-                    title="更新技能"
-                  >
-                    <RotateCw size={14} className="text-[hsl(var(--muted-foreground))]" />
-                  </button>
+                <div className="flex items-center gap-1 sm:opacity-0 sm:group-hover:opacity-100 transition-opacity flex-shrink-0">
+                  {isGitHubUrl(skill.source_ref) && (
+                    <button
+                      onClick={() => handleRefreshGitSkill(skill)}
+                      disabled={refreshingSkill === skill.id}
+                      className="p-2 hover:bg-[hsl(var(--muted))] rounded-lg transition-colors disabled:opacity-50"
+                      title="从 GitHub 刷新"
+                    >
+                      <RefreshCw size={14} className={`text-[hsl(var(--muted-foreground))] ${refreshingSkill === skill.id ? 'animate-spin' : ''}`} />
+                    </button>
+                  )}
                   <button
                     onClick={() => onDeleteSkill(skill)}
                     className="p-2 hover:bg-red-500/10 rounded-lg transition-colors"
@@ -149,38 +260,40 @@ function SkillsList({
                 </div>
               </div>
 
-              {/* 同步目标（始终显示） */}
-              <div className="px-3 sm:px-5 py-3 border-t border-[hsl(var(--border))] bg-[hsl(var(--muted)/50)]">
+              {/* 同步目标 */}
+              <div className="px-3 sm:px-5 py-2.5 sm:py-3 bg-[hsl(var(--card))] border-t border-[hsl(var(--border))]">
                 <div className="flex flex-wrap gap-1.5 sm:gap-2">
-                  {tools.map(tool => (
-                    <label
-                      key={tool.id}
-                      className={`inline-flex items-center gap-1.5 px-2 sm:px-2.5 py-1 sm:py-1.5 rounded-lg cursor-pointer transition-all text-xs font-medium ${
-                        syncTargets[tool.id]
-                          ? "bg-[hsl(var(--primary))/10] text-[hsl(var(--primary))]"
-                          : "bg-[hsl(var(--muted))] text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]"
-                      }`}
-                    >
-                      <input
-                        type="checkbox"
-                        checked={syncTargets[tool.id] || false}
-                        onChange={(e) => onSyncTargetChange(tool.id, e.target.checked)}
-                        className="sr-only"
-                      />
-                      <div
-                        className={`w-2 h-2 rounded-full flex-shrink-0 ${
-                          syncTargets[tool.id]
-                            ? appColors[tool.id] || "bg-[hsl(var(--foreground))]"
-                            : "bg-current opacity-40"
-                        }`}
-                      />
-                      <span>{tool.label}</span>
-                    </label>
-                  ))}
+                  {tools.map(tool => {
+                    const synced = isToolSynced(skill, tool.id);
+                    const isSyncing = syncingTool === `${skill.id}-${tool.id}`;
+                    return (
+                      <button
+                        key={tool.id}
+                        onClick={() => !isSyncing && handleToggleSync(skill, tool.id, !synced)}
+                        disabled={isSyncing}
+                        className={`inline-flex items-center gap-1.5 px-2 sm:px-2.5 py-1 sm:py-1.5 rounded-lg transition-all text-xs font-medium ${
+                          synced
+                            ? "bg-[hsl(var(--primary))/10] text-[hsl(var(--primary))]"
+                            : "bg-[hsl(var(--muted))] text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]"
+                        } ${isSyncing ? 'opacity-50' : ''}`}
+                      >
+                        <div
+                          className={`w-2 h-2 rounded-full flex-shrink-0 ${
+                            synced
+                              ? appColors[tool.id] || "bg-[hsl(var(--foreground))]"
+                              : "bg-current opacity-40"
+                          }`}
+                        />
+                        <span>{tool.label}</span>
+                        {isSyncing && <span className="ml-1">...</span>}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
             </div>
-          ))
+          ))}
+          </>
         )}
       </div>
 
@@ -192,7 +305,9 @@ function SkillsList({
             <div className="flex items-center justify-between px-6 py-5 border-b border-[hsl(var(--border))] flex-shrink-0">
               <div className="flex items-center gap-3">
                 <div className="w-10 h-10 rounded-lg bg-[hsl(var(--primary))] flex items-center justify-center">
-                  {detailSkill.source_type === 'git' ? (
+                  {isGitHubUrl(detailSkill.source_ref) ? (
+                    <Github size={20} className="text-white" />
+                  ) : detailSkill.source_type === 'git' ? (
                     <GitBranch size={20} className="text-white" />
                   ) : (
                     <Folder size={20} className="text-white" />
@@ -235,15 +350,17 @@ function SkillsList({
 
             {/* 底部 */}
             <div className="px-6 py-4 border-t border-[hsl(var(--border))] bg-[hsl(var(--muted)/30] flex-shrink-0 flex justify-end gap-3">
-              <button
-                onClick={() => {
-                  onUpdateSkill(detailSkill);
-                  setDetailSkill(null);
-                }}
-                className="px-4 py-2 rounded-lg text-sm font-medium bg-[hsl(var(--secondary))] hover:brightness-[0.95] text-[hsl(var(--secondary-foreground))] transition-all border border-[hsl(var(--border))]"
-              >
-                更新
-              </button>
+              {isGitHubUrl(detailSkill.source_ref) && (
+                <button
+                  onClick={() => {
+                    handleRefreshGitSkill(detailSkill);
+                    setDetailSkill(null);
+                  }}
+                  className="px-4 py-2 rounded-lg text-sm font-medium bg-[hsl(var(--secondary))] hover:brightness-[0.95] text-[hsl(var(--secondary-foreground))] transition-all border border-[hsl(var(--border))]"
+                >
+                  从 GitHub 刷新
+                </button>
+              )}
               <button
                 onClick={() => {
                   setDetailSkill(null);

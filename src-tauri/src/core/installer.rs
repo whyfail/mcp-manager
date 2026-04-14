@@ -1,6 +1,8 @@
 use std::path::{Path, PathBuf};
+use std::sync::{Mutex, OnceLock};
 
 use anyhow::{Context, Result};
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use super::central_repo::{ensure_central_repo, resolve_central_repo_path};
@@ -14,24 +16,158 @@ pub struct InstallResult {
     pub name: String,
     pub central_path: PathBuf,
     pub content_hash: Option<String>,
+    pub source_subpath: Option<String>,
+    pub source_revision: Option<String>,
+}
+
+/// Scan base directories used for skill discovery.
+const SKILL_SCAN_BASES: [&str; 5] = [
+    "skills",
+    "skills/.curated",
+    "skills/.experimental",
+    "skills/.system",
+    ".claude/skills",
+];
+
+/// Check if a directory is a valid skill (has SKILL.md or is under .claude/skills/).
+fn is_skill_dir(p: &Path) -> bool {
+    p.is_dir() && (p.join("SKILL.md").exists() || is_claude_skill_dir(p))
+}
+
+/// Check if a directory is a Claude plugin skill (under .claude/skills/ without SKILL.md).
+fn is_claude_skill_dir(p: &Path) -> bool {
+    if let Some(parent) = p.parent() {
+        let parent_str = parent.to_string_lossy();
+        if parent_str.ends_with(".claude/skills") || parent_str.ends_with(".claude\\skills") {
+            return p.is_dir();
+        }
+    }
+    false
+}
+
+/// Extract name and description for a skill directory.
+fn extract_skill_info(skill_dir: &Path) -> (String, Option<String>) {
+    let skill_md = skill_dir.join("SKILL.md");
+    if skill_md.exists() {
+        if let Some((name, desc)) = parse_skill_md(&skill_md) {
+            return (name, desc);
+        }
+    }
+    let name = skill_dir
+        .file_name()
+        .unwrap_or_default()
+        .to_string_lossy()
+        .to_string();
+    (name, None)
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct GitSkillCandidate {
+    pub name: String,
+    pub description: Option<String>,
+    pub subpath: String,
+}
+
+/// Scan all skill candidates in a cloned repo directory, returning GitSkillCandidate list.
+pub fn scan_git_skill_candidates(repo_dir: &Path) -> Vec<GitSkillCandidate> {
+    let mut out = Vec::new();
+
+    // Root-level skill
+    let root_skill = repo_dir.join("SKILL.md");
+    if root_skill.exists() {
+        if let Some((name, desc)) = parse_skill_md(&root_skill) {
+            out.push(GitSkillCandidate {
+                name,
+                description: desc,
+                subpath: ".".to_string(),
+            });
+        }
+    }
+
+    // Root-level subdirectories (skip "skills" and hidden dirs)
+    if let Ok(rd) = std::fs::read_dir(repo_dir) {
+        for entry in rd.flatten() {
+            let p = entry.path();
+            if !p.is_dir() {
+                continue;
+            }
+            let dir_name = entry.file_name();
+            let dir_name = dir_name.to_string_lossy();
+            if dir_name == "skills" || dir_name.starts_with('.') {
+                continue;
+            }
+            if p.join("SKILL.md").exists() {
+                let (name, desc) =
+                    parse_skill_md(&p.join("SKILL.md")).unwrap_or((dir_name.to_string(), None));
+                let rel = p
+                    .strip_prefix(repo_dir)
+                    .unwrap_or(&p)
+                    .to_string_lossy()
+                    .to_string();
+                out.push(GitSkillCandidate {
+                    name,
+                    description: desc,
+                    subpath: rel,
+                });
+            }
+        }
+    }
+
+    // Scan known sub-locations: skills/*, .claude/skills/*, etc.
+    for base in SKILL_SCAN_BASES {
+        let base_dir = repo_dir.join(base);
+        if !base_dir.exists() {
+            continue;
+        }
+        if let Ok(rd) = std::fs::read_dir(&base_dir) {
+            for entry in rd.flatten() {
+                let p = entry.path();
+                if !is_skill_dir(&p) {
+                    continue;
+                }
+                let (name, desc) = extract_skill_info(&p);
+                let rel = p
+                    .strip_prefix(repo_dir)
+                    .unwrap_or(&p)
+                    .to_string_lossy()
+                    .to_string();
+                out.push(GitSkillCandidate {
+                    name,
+                    description: desc,
+                    subpath: rel,
+                });
+            }
+        }
+    }
+
+    out.sort_by(|a, b| a.name.cmp(&b.name));
+    out.dedup_by(|a, b| a.subpath == b.subpath);
+    out
 }
 
 /// Install a skill from a Git URL (GitHub, GitLab, etc.)
+/// When subpath is None and the repo contains multiple skills, returns a MULTI_SKILLS error.
 pub fn install_git_skill(
     repo_url: &str,
     name: Option<String>,
+    subpath: Option<&str>,
 ) -> Result<InstallResult> {
-    eprintln!("[DEBUG] install_git_skill called: repo_url={}, name={:?}", repo_url, name);
     let parsed = parse_github_url(repo_url);
-    eprintln!("[DEBUG] parsed Git URL: clone_url={}, branch={:?}, subpath={:?}", parsed.clone_url, parsed.branch, parsed.subpath);
     let user_provided_name = name.is_some();
-    let mut skill_name = name.unwrap_or_else(|| {
-        if let Some(subpath) = &parsed.subpath {
-            subpath
-                .rsplit('/')
-                .next()
-                .map(|s| s.to_string())
-                .unwrap_or_else(|| derive_name_from_repo_url(&parsed.clone_url))
+
+    // If URL has a /tree/ or /blob/ subpath, that IS the subpath
+    let effective_subpath = subpath.map(|s| s.to_string()).or_else(|| parsed.subpath.clone());
+
+    let skill_name = name.unwrap_or_else(|| {
+        if let Some(sp) = &effective_subpath {
+            if sp.as_str() == "." {
+                derive_name_from_repo_url(&parsed.clone_url)
+            } else {
+                sp.rsplit('/')
+                    .next()
+                    .map(|s| s.to_string())
+                    .unwrap_or_else(|| derive_name_from_repo_url(&parsed.clone_url))
+            }
         } else {
             derive_name_from_repo_url(&parsed.clone_url)
         }
@@ -42,81 +178,87 @@ pub fn install_git_skill(
     let mut central_path = central_dir.join(&skill_name);
 
     if central_path.exists() {
-        anyhow::bail!("skill already exists in central repo: {:?}", central_path);
+        anyhow::bail!("Skill already exists in central repo: {:?}", central_path);
     }
 
-    // Try GitHub API download first (fast path for GitHub URLs with subpath)
+    // Fast path: for GitHub URLs with a subpath, download via API instead of cloning.
     let revision;
-    eprintln!("[DEBUG] Trying GitHub API download path...");
-    if let Some((owner, repo, branch, subpath)) = parse_github_api_params(
+    if let Some((owner, repo, branch, sp)) = parse_github_api_params(
         &parsed.clone_url,
         parsed.branch.as_deref(),
-        parsed.subpath.as_deref(),
+        effective_subpath.as_deref(),
     ) {
-        match download_github_directory(&owner, &repo, &branch, &subpath, &central_path, None) {
+        match download_github_directory(&owner, &repo, &branch, &sp, &central_path, None) {
             Ok(()) => {
-                eprintln!("[DEBUG] GitHub API download succeeded");
                 revision = format!("api-download-{}", branch);
             }
             Err(err) => {
-                eprintln!("[DEBUG] GitHub API download failed: {}", err);
-                // Clean up partial download
                 let _ = std::fs::remove_dir_all(&central_path);
                 let err_msg = format!("{:#}", err);
 
-                // If 404, the path doesn't exist on GitHub
                 if err_msg.contains("404") || err_msg.contains("Not Found") {
                     anyhow::bail!(
                         "该 Skill 在 GitHub 上未找到（可能已被删除或路径已变更）。\n请检查链接是否正确：{}/tree/{}/{}",
                         parsed.clone_url.trim_end_matches(".git"),
                         branch,
-                        subpath
+                        sp
                     );
                 }
-
-                // If rate limited
                 if err_msg.contains("RATE_LIMITED") {
                     anyhow::bail!(
                         "GitHub API 频率限制已触发。可在设置中配置 GitHub Token 以提升限额。"
                     );
                 }
-
                 if err_msg.contains("403") || err_msg.contains("Forbidden") {
                     anyhow::bail!("GitHub API 访问被拒绝（可能触发了频率限制）。请稍后再试。");
                 }
 
-                // Fall back to git clone
-                eprintln!("[DEBUG] Falling back to git clone...");
                 log::warn!(
                     "[installer] GitHub API download failed, falling back to git clone: {:#}",
                     err
                 );
-                let (repo_dir, rev) = clone_to_cache(&parsed.clone_url, parsed.branch.as_deref())?;
-                let sub_src = repo_dir.join(&subpath);
-                if !sub_src.exists() {
-                    anyhow::bail!("subpath not found in repo: {:?}", sub_src);
+                let (repo_dir, rev) = clone_to_cache_with_ttl(&parsed.clone_url, parsed.branch.as_deref())?;
+                let copy_src = if effective_subpath.as_deref() == Some(".") || effective_subpath.is_none() {
+                    repo_dir.clone()
+                } else {
+                    repo_dir.join(effective_subpath.as_ref().unwrap())
+                };
+                if !copy_src.exists() {
+                    anyhow::bail!("subpath not found in repo: {:?}", copy_src);
                 }
-                copy_dir_recursive(&sub_src, &central_path)
-                    .with_context(|| format!("copy {:?} -> {:?}", sub_src, central_path))?;
+                copy_dir_recursive(&copy_src, &central_path)
+                    .with_context(|| format!("copy {:?} -> {:?}", copy_src, central_path))?;
                 revision = rev;
             }
         }
     } else {
-        // Standard git clone path
-        eprintln!("[DEBUG] Using standard git clone path...");
-        let (repo_dir, rev) = clone_to_cache(&parsed.clone_url, parsed.branch.as_deref())?;
-        eprintln!("[DEBUG] Git clone succeeded, rev={}", rev);
+        // No /tree/ subpath in URL: clone and detect
+        let (repo_dir, rev) = clone_to_cache_with_ttl(&parsed.clone_url, parsed.branch.as_deref())?;
 
-        let copy_src = if let Some(subpath) = &parsed.subpath {
-            let sub_src = repo_dir.join(subpath);
-            if !sub_src.exists() {
-                anyhow::bail!("subpath not found in repo: {:?}", sub_src);
+        // If no explicit subpath, check for multi-skill
+        if effective_subpath.is_none() {
+            let candidates = scan_git_skill_candidates(&repo_dir);
+            if candidates.len() >= 2 {
+                anyhow::bail!(
+                    "MULTI_SKILLS|该仓库包含 {} 个 Skills。请复制具体 Skill 文件夹链接（例如 GitHub 的 /tree/<branch>/<skill-folder>），再导入。",
+                    candidates.len()
+                );
             }
-            sub_src
+        }
+
+        let copy_src = if let Some(sp) = &effective_subpath {
+            if sp == "." {
+                repo_dir.clone()
+            } else {
+                repo_dir.join(sp)
+            }
         } else {
             repo_dir.clone()
         };
 
+        if !copy_src.exists() {
+            anyhow::bail!("path not found in repo: {:?}", copy_src);
+        }
         copy_dir_recursive(&copy_src, &central_path)
             .with_context(|| format!("copy {:?} -> {:?}", copy_src, central_path))?;
         revision = rev;
@@ -136,7 +278,6 @@ pub fn install_git_skill(
                     std::fs::rename(&central_path, &new_central).with_context(|| {
                         format!("rename {:?} -> {:?}", central_path, new_central)
                     })?;
-                    skill_name = better_name.clone();
                     central_path = new_central;
                 }
             }
@@ -144,26 +285,103 @@ pub fn install_git_skill(
     }
 
     let content_hash = compute_content_hash(&central_path);
-
-    let now = now_ms();
     let skill_id = format!("git-{}", Uuid::new_v4());
 
-    // TODO: Save to database using skills DAO
-    // For now, return the result
-
-    eprintln!("[DEBUG] install_git_skill completed successfully: skill_id={}, name={}, central_path={:?}", skill_id, skill_name, central_path);
     Ok(InstallResult {
         skill_id,
         name: skill_name,
         central_path,
         content_hash,
+        source_subpath: effective_subpath,
+        source_revision: Some(revision),
     })
 }
 
-fn parse_github_url(input: &str) -> ParsedGitSource {
+/// Install a specific skill from a Git URL (after user picks from list_git_skills).
+pub fn install_git_skill_from_selection(
+    repo_url: &str,
+    subpath: &str,
+    name: Option<String>,
+) -> Result<InstallResult> {
+    let parsed = parse_github_url(repo_url);
+    let user_provided_name = name.is_some();
+
+    let display_name = name.unwrap_or_else(|| {
+        if subpath == "." {
+            derive_name_from_repo_url(&parsed.clone_url)
+        } else {
+            subpath
+                .rsplit('/')
+                .next()
+                .map(|s| s.to_string())
+                .unwrap_or_else(|| derive_name_from_repo_url(&parsed.clone_url))
+        }
+    });
+
+    let central_dir = resolve_central_repo_path()?;
+    ensure_central_repo(&central_dir)?;
+    let mut central_path = central_dir.join(&display_name);
+
+    if central_path.exists() {
+        anyhow::bail!("Skill already exists in central repo: {:?}", central_path);
+    }
+
+    let (repo_dir, revision) = clone_to_cache_with_ttl(&parsed.clone_url, parsed.branch.as_deref())?;
+
+    let copy_src = if subpath == "." {
+        repo_dir.clone()
+    } else {
+        repo_dir.join(subpath)
+    };
+
+    if !copy_src.exists() {
+        anyhow::bail!("path not found in repo: {:?}", copy_src);
+    }
+
+    copy_dir_recursive(&copy_src, &central_path)
+        .with_context(|| format!("copy {:?} -> {:?}", copy_src, central_path))?;
+
+    // Prefer name from SKILL.md
+    let (description, md_name) = match parse_skill_md(&central_path.join("SKILL.md")) {
+        Some((n, d)) => (d, Some(n)),
+        None => (None, None),
+    };
+
+    if !user_provided_name {
+        if let Some(ref better_name) = md_name {
+            if *better_name != display_name {
+                let new_central = central_dir.join(better_name);
+                if !new_central.exists() {
+                    std::fs::rename(&central_path, &new_central).with_context(|| {
+                        format!("rename {:?} -> {:?}", central_path, new_central)
+                    })?;
+                    central_path = new_central;
+                }
+            }
+        }
+    }
+
+    let content_hash = compute_content_hash(&central_path);
+    let skill_id = format!("git-{}", Uuid::new_v4());
+    let source_subpath = if subpath == "." {
+        None
+    } else {
+        Some(subpath.to_string())
+    };
+
+    Ok(InstallResult {
+        skill_id,
+        name: display_name,
+        central_path,
+        content_hash,
+        source_subpath,
+        source_revision: Some(revision),
+    })
+}
+
+pub fn parse_github_url(input: &str) -> ParsedGitSource {
     let trimmed = input.trim().trim_end_matches('/');
 
-    // Normalize GitHub shorthand
     let normalized = if trimmed.starts_with("https://github.com/") {
         trimmed.to_string()
     } else if trimmed.starts_with("github.com/") {
@@ -266,10 +484,10 @@ fn looks_like_github_shorthand(input: &str) -> bool {
 }
 
 #[derive(Clone, Debug)]
-struct ParsedGitSource {
-    clone_url: String,
-    branch: Option<String>,
-    subpath: Option<String>,
+pub struct ParsedGitSource {
+    pub clone_url: String,
+    pub branch: Option<String>,
+    pub subpath: Option<String>,
 }
 
 fn derive_name_from_repo_url(repo_url: &str) -> String {
@@ -295,15 +513,75 @@ fn now_ms() -> i64 {
     now.as_millis() as i64
 }
 
-fn clone_to_cache(clone_url: &str, branch: Option<&str>) -> Result<(PathBuf, String)> {
-    let cache_root = std::env::temp_dir().join("mcp-manager-git-cache");
+#[derive(Clone, Debug, Serialize, Deserialize)]
+struct RepoCacheMeta {
+    last_fetched_ms: i64,
+    head: Option<String>,
+}
+
+static GIT_CACHE_LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+
+fn get_git_cache_ttl_secs() -> u64 {
+    std::env::var("MCP_MANAGER_GIT_CACHE_TTL_SECS")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .unwrap_or(3600)
+}
+
+fn clone_to_cache_with_ttl(clone_url: &str, branch: Option<&str>) -> Result<(PathBuf, String)> {
+    let cache_root = std::env::temp_dir().join("ai-tool-manager-git-cache");
     std::fs::create_dir_all(&cache_root)
         .with_context(|| format!("failed to create cache dir {:?}", cache_root))?;
 
     let repo_dir = cache_root.join(repo_cache_key(clone_url, branch));
-    let revision = clone_or_pull(clone_url, &repo_dir, branch)?;
+    let meta_path = repo_dir.join(".ai-tool-manager-cache.json");
 
-    Ok((repo_dir, revision))
+    let lock = GIT_CACHE_LOCK.get_or_init(|| Mutex::new(()));
+    let _guard = lock.lock().unwrap_or_else(|err| err.into_inner());
+
+    if repo_dir.join(".git").exists() {
+        if let Ok(meta) = std::fs::read_to_string(&meta_path) {
+            if let Ok(meta) = serde_json::from_str::<RepoCacheMeta>(&meta) {
+                if let Some(head) = meta.head {
+                    let ttl_ms = get_git_cache_ttl_secs().saturating_mul(1000) as i64;
+                    if ttl_ms > 0 && now_ms().saturating_sub(meta.last_fetched_ms) < ttl_ms {
+                        log::info!(
+                            "[installer] git cache hit (fresh) url={} branch={:?} repo_dir={:?}",
+                            clone_url,
+                            branch,
+                            repo_dir
+                        );
+                        return Ok((repo_dir, head));
+                    }
+                }
+            }
+        }
+    }
+
+    log::info!(
+        "[installer] git cache miss/stale; fetching url={} branch={:?} repo_dir={:?}",
+        clone_url,
+        branch,
+        repo_dir
+    );
+
+    let rev = clone_or_pull(clone_url, &repo_dir, branch).map_err(|err| {
+        if repo_dir.exists() {
+            let _ = std::fs::remove_dir_all(&repo_dir);
+        }
+        anyhow::anyhow!("{:#}", err)
+    })?;
+
+    let _ = std::fs::write(
+        &meta_path,
+        serde_json::to_string(&RepoCacheMeta {
+            last_fetched_ms: now_ms(),
+            head: Some(rev.clone()),
+        })
+        .unwrap_or_else(|_| "{}".to_string()),
+    );
+
+    Ok((repo_dir, rev))
 }
 
 fn repo_cache_key(clone_url: &str, branch: Option<&str>) -> String {

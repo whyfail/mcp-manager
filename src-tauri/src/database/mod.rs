@@ -6,6 +6,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 pub use dao::mcp::*;
+pub use dao::skill::*;
 
 use crate::error::AppError;
 
@@ -42,8 +43,8 @@ impl Database {
     fn get_db_path() -> Result<PathBuf, AppError> {
         let config_dir = dirs::home_dir()
             .ok_or_else(|| AppError::Database("Could not find home directory".to_string()))?
-            .join(".mcp-manager");
-        Ok(config_dir.join("mcp-manager.db"))
+            .join(".ai-tool-manager");
+        Ok(config_dir.join("ai-tool-manager.db"))
     }
 
     fn init_schema(&self) -> Result<(), AppError> {
@@ -90,6 +91,7 @@ impl Database {
                 description TEXT,
                 source_type TEXT NOT NULL,
                 source_ref TEXT,
+                source_subpath TEXT,
                 central_path TEXT NOT NULL,
                 created_at INTEGER DEFAULT (strftime('%s', 'now') * 1000),
                 updated_at INTEGER DEFAULT (strftime('%s', 'now') * 1000),
@@ -116,6 +118,7 @@ impl Database {
         let _ = conn.execute("ALTER TABLE mcp_servers ADD COLUMN enabled_trae_solo_cn BOOLEAN DEFAULT FALSE", []);
         let _ = conn.execute("ALTER TABLE mcp_servers ADD COLUMN enabled_qoder BOOLEAN DEFAULT FALSE", []);
         let _ = conn.execute("ALTER TABLE mcp_servers ADD COLUMN enabled_codebuddy BOOLEAN DEFAULT FALSE", []);
+        let _ = conn.execute("ALTER TABLE managed_skills ADD COLUMN source_subpath TEXT", []);
 
         Ok(())
     }

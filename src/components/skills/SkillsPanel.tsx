@@ -1,10 +1,11 @@
 import { useState, useCallback, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { Plus, RefreshCw, Search, Folder } from 'lucide-react';
+import { Plus, RefreshCw, Search, Folder, Upload } from 'lucide-react';
 import { toast } from 'sonner';
 import SkillsList from './SkillsList';
 import AddSkillModal from './modals/AddSkillModal';
 import ImportModal from './modals/ImportModal';
+import BatchSyncModal from './modals/BatchSyncModal';
 import type {
   ManagedSkill,
   ToolStatusDto,
@@ -18,9 +19,11 @@ function SkillsPanel() {
   const [plan, setPlan] = useState<OnboardingPlan | null>(null);
   const [showAddModal, setShowAddModal] = useState(false);
   const [showImportModal, setShowImportModal] = useState(false);
+  const [showBatchSyncModal, setShowBatchSyncModal] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [syncTargets, setSyncTargets] = useState<Record<string, boolean>>({});
   const [deleteSkillId, setDeleteSkillId] = useState<string | null>(null);
+  const [selectedSkills, setSelectedSkills] = useState<Set<string>>(new Set());
   const [isLoading, setIsLoading] = useState(true);
 
   const loadManagedSkills = useCallback(async () => {
@@ -79,6 +82,34 @@ function SkillsPanel() {
     }));
   }, []);
 
+  const handleSelectionChange = useCallback((skillId: string, selected: boolean) => {
+    setSelectedSkills((prev) => {
+      const next = new Set(prev);
+      if (selected) {
+        next.add(skillId);
+      } else {
+        next.delete(skillId);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleSelectAll = useCallback((selected: boolean) => {
+    if (selected) {
+      setSelectedSkills(new Set(managedSkills.map(s => s.id)));
+    } else {
+      setSelectedSkills(new Set());
+    }
+  }, [managedSkills]);
+
+  const handleBatchSync = useCallback(() => {
+    if (selectedSkills.size === 0) {
+      toast.warning('请先选择要同步的技能');
+      return;
+    }
+    setShowBatchSyncModal(true);
+  }, [selectedSkills]);
+
   const handleRefresh = useCallback(() => {
     setIsLoading(true);
     loadManagedSkills();
@@ -95,17 +126,6 @@ function SkillsPanel() {
       setShowImportModal(true);
     }
   }, [loadPlan, plan]);
-
-  const handleUpdateSkill = useCallback(async (skill: ManagedSkill) => {
-    try {
-      toast.info(`正在更新技能: ${skill.name}`);
-      await invoke('update_skill', { skillId: skill.id });
-      toast.success(`技能 "${skill.name}" 更新成功`);
-      loadManagedSkills();
-    } catch (err) {
-      toast.error(`更新技能失败: ${err}`);
-    }
-  }, [loadManagedSkills]);
 
   const handleDeleteSkill = useCallback((skill: ManagedSkill) => {
     setDeleteSkillId(skill.id);
@@ -184,6 +204,15 @@ function SkillsPanel() {
           <span className="font-medium text-[hsl(var(--muted-foreground))]">
             总计: {managedSkills.length}
           </span>
+          {selectedSkills.size > 0 && (
+            <button
+              onClick={handleBatchSync}
+              className="inline-flex items-center gap-1 px-2 py-1 bg-[hsl(var(--primary))] text-white rounded-md hover:brightness-[0.9] transition-all text-xs font-medium"
+            >
+              <Upload size={12} />
+              <span>批量同步到工具</span>
+            </button>
+          )}
           {tools.filter(t => syncTargets[t.id]).length > 0 && (
             <span className="text-[hsl(var(--muted-foreground))]">
               已同步到: {tools.filter(t => syncTargets[t.id]).length} 个工具
@@ -202,14 +231,15 @@ function SkillsPanel() {
           <SkillsList
             skills={managedSkills}
             tools={tools}
-            syncTargets={syncTargets}
-            onSyncTargetChange={handleSyncTargetChange}
+            selectedSkills={selectedSkills}
+            onSelectionChange={handleSelectionChange}
+            onSelectAll={handleSelectAll}
             searchQuery={searchQuery}
-            onUpdateSkill={handleUpdateSkill}
             onDeleteSkill={handleDeleteSkill}
             onDeleteId={deleteSkillId}
             onConfirmDelete={confirmDelete}
             onCancelDelete={() => setDeleteSkillId(null)}
+            onSkillSync={loadManagedSkills}
           />
         )}
       </div>
@@ -230,6 +260,17 @@ function SkillsPanel() {
         tools={tools}
         syncTargets={syncTargets}
         onSkillAdded={loadManagedSkills}
+      />
+      <BatchSyncModal
+        open={showBatchSyncModal}
+        onClose={() => setShowBatchSyncModal(false)}
+        selectedSkills={selectedSkills}
+        skills={managedSkills}
+        tools={tools}
+        onSyncComplete={() => {
+          setSelectedSkills(new Set());
+          loadManagedSkills();
+        }}
       />
     </div>
   );

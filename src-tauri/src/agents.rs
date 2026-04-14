@@ -278,7 +278,7 @@ pub fn detect_all_agents() -> Vec<DetectedAgent> {
 
 /// 获取上次检测的工具列表（从状态文件读取）
 pub fn get_last_detected_agents() -> Vec<String> {
-    let state_path = resolve_path("~/.mcp-manager/detected.json");
+    let state_path = resolve_path("~/.ai-tool-manager/detected.json");
     if let Ok(content) = fs::read_to_string(&state_path) {
         if let Ok(agents) = serde_json::from_str::<Vec<String>>(&content) {
             return agents;
@@ -289,7 +289,7 @@ pub fn get_last_detected_agents() -> Vec<String> {
 
 /// 保存检测到的工具列表
 pub fn save_detected_agents(agents: &[String]) {
-    let state_dir = resolve_path("~/.mcp-manager");
+    let state_dir = resolve_path("~/.ai-tool-manager");
     let _ = fs::create_dir_all(&state_dir);
     let state_path = state_dir.join("detected.json");
     if let Ok(json) = serde_json::to_string_pretty(agents) {
