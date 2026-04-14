@@ -2,7 +2,7 @@
 
 <div align="center">
 
-[![Version](https://img.shields.io/badge/version-1.0.0-blue.svg)](https://github.com)
+[![Version](https://img.shields.io/badge/version-1.1.0-blue.svg)](https://github.com)
 [![Platform](https://img.shields.io/badge/platform-macOS%2012%2B-lightgrey.svg)](https://github.com)
 [![Built with Tauri](https://img.shields.io/badge/built%20with-Tauri%202-orange.svg)](https://tauri.app/)
 
@@ -12,43 +12,36 @@
 
 ## 📖 Introduction
 
-AI Toolkit is a **universal Model Context Protocol (MCP) server management tool** designed to help developers uniformly manage MCP configurations across multiple AI programming tools. Say goodbye to tedious manual editing—one app to rule them all.
+AI Toolkit is a **universal AI programming tools management tool** that supports unified MCP server configuration and Skills synchronization. Say goodbye to tedious manual editing—one app to rule them all.
 
 ## ✨ Key Features
 
-### 🎯 Unified Management, One-Click Sync
-- Support for **8** mainstream AI programming tools: Qwen Code, Claude Code, OpenAI Codex, Google Gemini CLI, OpenCode, OpenClaw, Trae, Trae CN, Qoder, CodeBuddy
+### 🎯 MCP Server Management
+- Support for **11** mainstream AI programming tools: Qwen Code, Claude Code, Codex, Gemini CLI, OpenCode, OpenClaw, Trae, Trae CN, TRAE SOLO CN, Qoder, CodeBuddy
 - Add, edit, and delete MCP servers in a single interface
 - Automatically detects installed AI tools on your system and prompts for MCP sync when new tools are discovered
 - Toggle switches **sync in real-time** to the corresponding tool's configuration file
-
-### 📋 Minimalist Configuration
 - **JSON Paste Mode**: Copy JSON configuration directly from an MCP introduction page and paste to recognize
-- **Smart Parsing**: Automatically extracts server ID, name, command, and arguments
 - **Connection Testing**: Built-in test connection function to ensure server configurations are valid before saving
-- **Atomic Writing**: Temporary file + rename mechanism to prevent configuration corruption
+
+### 🧰 Skills Management
+- **Skills Panel**: Dedicated Skills management interface for centralized skill management
+- **Batch Sync**: Select multiple Skills and sync to multiple target tools at once
+- **Git Installation**: Install Skills from GitHub/GitLab repositories with automatic repository structure parsing
+- **Online Search**: Search trending Skills from skills.sh
+- **Featured Recommendations**: Browse featured Skills with install counts and star information
+- **One-Click Update**: Auto-detect Skills with updates available and quick update support
 
 ### 🔧 Developer Friendly
-- Click on a tool name to quickly open the corresponding MCP configuration file
+- Click on a tool name to quickly open the corresponding configuration file
 - Visual interface, goodbye manual editing of JSON/TOML files
 - Automatic recognition of multiple configuration file paths
+- **Atomic Writing**: Temporary file + rename mechanism to prevent configuration corruption
 
 ## 📸 Screenshots
 
 ### Main Panel
-> [!NOTE]
-> ![Main Panel](assets/screenshots/main-panel.png)
-> *Unified MCP server management panel showing installed tools and their enabled status*
-
-### Add Server
-> [!NOTE]
-> ![Add Server](assets/screenshots/add-server.png)
-> *JSON paste mode with real-time parsing, connection testing, and target tool selection*
-
-### Scan New Tools
-> [!NOTE]
-> ![Scan Agents](assets/screenshots/scan-agents.png)
-> *Automatically discover newly installed AI tools and prompt for MCP sync*
+![Main Panel](https://minimax-algeng-chat-tts.oss-cn-wulanchabu.aliyuncs.com/ccv2%2F2026-04-14%2FMiniMax-M2.7-highspeed%2F2043301459721724270%2F96550826ecc8e3fe6dd9e5248437d77c5445f410badbad8116fb4947ed5636af..png?Expires=1776242038&OSSAccessKeyId=LTAI5tGLnRTkBjLuYPjNcKQ8&Signature=KLl7fA40w1lz0SNEvGiD%2BPp582k%3D)
 
 ## 🖥️ System Support
 
@@ -76,7 +69,7 @@ cp -R /Volumes/AI\ Toolkit/AI\ Toolkit.app /Applications/
 
 Since the current version is not code-signed or notarized by Apple, macOS Gatekeeper may block it on first launch, showing **"Cannot be verified"** or **"File is damaged"**. Follow these steps to allow it:
 
-**Method 1 (Terminal Command - Recommended for "File is Damaged" error):**
+**Method 1 (Terminal Command - Recommended):**
 1. Drag the app to your `/Applications` folder
 2. Open **Terminal** and run the following command:
    ```bash
@@ -85,7 +78,7 @@ Since the current version is not code-signed or notarized by Apple, macOS Gateke
 3. Enter your Mac password and press Enter (characters won't be displayed). Once the command finishes, you can double-click to open.
 
 **Method 2 (Right-Click Open):**
-1. Locate `AI Toolkit.app` in `Finder`
+1. Locate `AI Toolkit.app` in **Finder**
 2. **Right-click** (or `Control + Click`) the app icon
 3. Select **"Open"** from the context menu
 4. Click **"Open"** again in the system warning dialog
@@ -95,14 +88,6 @@ Since the current version is not code-signed or notarized by Apple, macOS Gateke
 2. Scroll down to the **Security** section
 3. Find the message `"AI Toolkit" was blocked from use...`
 4. Click **"Open Anyway"** and enter your password if prompted
-
-### First Use
-
-1. Launch AI Toolkit
-2. The app will automatically scan installed AI tools
-3. Click "Add Server" to paste JSON configuration
-4. Click "Test Connection" to verify configuration
-5. Select the AI tools to sync with, then save to apply
 
 ## 📁 Supported AI Tools & Configuration Paths
 
@@ -116,6 +101,7 @@ Since the current version is not code-signed or notarized by Apple, macOS Gateke
 | OpenClaw | `~/.openclaw/openclaw.json` |
 | Trae | `~/Library/Application Support/Trae/User/mcp.json` |
 | Trae CN | `~/Library/Application Support/Trae CN/User/mcp.json` |
+| TRAE SOLO CN | `~/Library/Application Support/TRAE SOLO CN/User/mcp.json` |
 | Qoder | `~/.qoder/settings.json` |
 | CodeBuddy | `~/.codebuddy/mcp.json` |
 
