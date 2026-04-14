@@ -1,4 +1,5 @@
 use serde::Serialize;
+use tauri::{AppHandle, Emitter};
 use tauri_plugin_updater::UpdaterExt;
 
 #[derive(Serialize, Clone)]
@@ -11,7 +12,7 @@ pub struct UpdateInfo {
 
 /// 检查更新
 #[tauri::command]
-pub async fn check_update(app: tauri::AppHandle) -> Result<UpdateInfo, String> {
+pub async fn check_update(app: AppHandle) -> Result<UpdateInfo, String> {
     let updater = app.updater().map_err(|e| e.to_string())?;
     match updater.check().await.map_err(|e| e.to_string())? {
         Some(update) => Ok(UpdateInfo {
@@ -31,7 +32,7 @@ pub async fn check_update(app: tauri::AppHandle) -> Result<UpdateInfo, String> {
 
 /// 下载并安装更新
 #[tauri::command]
-pub async fn install_update(app: tauri::AppHandle) -> Result<(), String> {
+pub async fn install_update(app: AppHandle) -> Result<(), String> {
     let updater = app.updater().map_err(|e| e.to_string())?;
     let update = updater
         .check()
@@ -39,9 +40,17 @@ pub async fn install_update(app: tauri::AppHandle) -> Result<(), String> {
         .map_err(|e| e.to_string())?
         .ok_or("没有可用的更新")?;
 
-    // 下载并安装，安装后重启应用
+    let _ = app.emit("update-status", "downloading");
+
     update
-        .download_and_install(|_, _| {}, || {})
+        .download_and_install(
+            |chunk_length, content_length| {
+                log::debug!("下载进度: {} / {:?}", chunk_length, content_length);
+            },
+            || {
+                log::info!("更新已准备好，正在重启...");
+            },
+        )
         .await
         .map_err(|e| e.to_string())
 }

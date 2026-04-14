@@ -161,6 +161,21 @@ Database (SQLite) + Config File Sync
 | `sync_agent_mcp` | 同步 Agent MCP 配置 |
 | `open_config_file` | 打开配置文件 |
 
+## 版本管理
+
+发布新版本时，需要同步修改以下文件中的版本号：
+
+| 文件 | 路径 | 键名/位置 |
+|------|------|----------|
+| package.json | 根目录 | `version` |
+| tauri.conf.json | src-tauri/ | `version` |
+| Cargo.toml | src-tauri/ | `version` |
+| mcp.rs | src-tauri/src/commands/ | `clientInfo.version` |
+
+**注意**: CHANGELOG.md 中的版本记录保留历史，不需同步修改。
+
+---
+
 ## 开发注意事项
 
 ### 各工具配置格式差异

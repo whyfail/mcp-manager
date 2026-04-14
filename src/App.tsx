@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Toaster } from "sonner";
+import { Toaster, toast } from "sonner";
 import UnifiedMcpPanel from "@/components/mcp/UnifiedMcpPanel";
 import UpdateModal from "@/components/mcp/UpdateModal";
 import SkillsPanel from "@/components/skills/SkillsPanel";
@@ -205,8 +205,10 @@ const SettingsTab: React.FC = () => {
     setInstalling(true);
     try {
       await invoke("install_update");
+      toast.success("更新下载完成，正在重启应用...");
     } catch (err) {
       console.error("安装更新失败:", err);
+      toast.error(`安装更新失败: ${err}`);
     } finally {
       setInstalling(false);
     }

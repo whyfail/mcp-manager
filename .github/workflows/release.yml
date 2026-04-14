@@ -111,7 +111,7 @@ jobs:
 
           # Copy .dmg if available (for manual installation)
           if [ -n "$DMG_PATH" ]; then
-            NEW_DMG="MCP_Manager-${VERSION}-macOS-${ARCH}.dmg"
+            NEW_DMG="AI_Toolkit-${VERSION}-macOS-${ARCH}.dmg"
             cp "$DMG_PATH" "release-assets/$NEW_DMG"
             echo "✅ macOS dmg ready: $NEW_DMG"
           fi
@@ -119,7 +119,7 @@ jobs:
           # Copy .app.tar.gz (updater bundle) and signature
           APP_TAR=$(find "$BUNDLE_DIR" -name "*.app.tar.gz" -type f 2>/dev/null | head -1)
           if [ -n "$APP_TAR" ]; then
-            NEW_APP_TAR="MCP_Manager-${VERSION}-macOS-${ARCH}.app.tar.gz"
+            NEW_APP_TAR="AI_Toolkit-${VERSION}-macOS-${ARCH}.app.tar.gz"
             cp "$APP_TAR" "release-assets/$NEW_APP_TAR"
             echo "✅ macOS updater bundle ready: $NEW_APP_TAR"
           fi
@@ -128,7 +128,7 @@ jobs:
           # Tauri v2 generates .app.tar.gz.sig for macOS
           SIG_FILE=$(find src-tauri/target -name "*.app.tar.gz.sig" -type f 2>/dev/null | head -1)
           if [ -n "$SIG_FILE" ]; then
-            cp "$SIG_FILE" "release-assets/MCP_Manager-${VERSION}-macOS-aarch64.app.tar.gz.sig"
+            cp "$SIG_FILE" "release-assets/AI_Toolkit-${VERSION}-macOS-aarch64.app.tar.gz.sig"
             echo "✅ signature file ready: $(basename "$SIG_FILE")"
             echo "   from: $SIG_FILE"
           else
@@ -222,7 +222,7 @@ jobs:
           New-Item -ItemType Directory -Force -Path release-assets
           $msi = Get-ChildItem -Path 'src-tauri/target/release/bundle/msi' -Recurse -Include *.msi -ErrorAction SilentlyContinue | Select-Object -First 1
           if ($null -ne $msi) {
-            $dest = "MCP_Manager-$env:VERSION-Windows-x64.msi"
+            $dest = "AI_Toolkit-$env:VERSION-Windows-x64.msi"
             Copy-Item $msi.FullName (Join-Path release-assets $dest)
             Write-Host "Windows msi ready: $dest"
           } else {
@@ -243,7 +243,7 @@ jobs:
             # Copy .msi.zip (updater bundle)
             $msiZip = Get-ChildItem -Path $fullBundleDir -Name '*.msi.zip' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
             if ($msiZip) {
-              $dest = "MCP_Manager-$env:VERSION-Windows-x64.msi.zip"
+              $dest = "AI_Toolkit-$env:VERSION-Windows-x64.msi.zip"
               Copy-Item (Join-Path $fullBundleDir $msiZip) (Join-Path release-assets $dest)
               Write-Host "✅ Windows updater bundle ready: $dest"
             } else {
@@ -253,7 +253,7 @@ jobs:
           # 查找签名文件
           $sigFile = Get-ChildItem -Path $fullBundleDir -Name '*.msi.sig' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
           if ($sigFile) {
-            $dest = "MCP_Manager-$env:VERSION-Windows-x64.msi.sig"
+            $dest = "AI_Toolkit-$env:VERSION-Windows-x64.msi.sig"
             Copy-Item (Join-Path $fullBundleDir $sigFile) (Join-Path release-assets $dest)
             Write-Host "✅ Windows signature file ready: $dest"
           } else {
@@ -362,8 +362,8 @@ jobs:
             --arg date "${RELEASE_DATE}" \
             --arg app_tar_sig "${APP_TAR_SIG_CONTENT}" \
             --arg msi_zip_sig "${MSI_ZIP_SIG_CONTENT}" \
-            --arg app_tar_url "${DOWNLOAD_BASE}/MCP_Manager-${VERSION}-macOS-aarch64.app.tar.gz" \
-            --arg msi_zip_url "${DOWNLOAD_BASE}/MCP_Manager-${VERSION}-Windows-x64.msi.zip" \
+            --arg app_tar_url "${DOWNLOAD_BASE}/AI_Toolkit-${VERSION}-macOS-aarch64.app.tar.gz" \
+            --arg msi_zip_url "${DOWNLOAD_BASE}/AI_Toolkit-${VERSION}-Windows-x64.msi.zip" \
             --arg notes "See changelog at https://github.com/whyfail/ai-tool-manager/releases/tag/v${VERSION}" \
             '{
               version: $ver,
