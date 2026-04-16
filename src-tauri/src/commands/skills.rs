@@ -459,6 +459,7 @@ pub async fn install_local_selection(
 }
 
 #[tauri::command]
+#[allow(non_snake_case)]
 pub async fn sync_skill_to_tool(
     skillId: String,
     skillName: String,
@@ -565,7 +566,7 @@ pub async fn import_existing_skill(
 }
 
 #[tauri::command]
-pub async fn delete_managed_skill(skill_id: String, skill_name: String) -> Result<(), String> {
+pub async fn delete_managed_skill(_skill_id: String, skill_name: String) -> Result<(), String> {
     // skill_id 格式: {tool_id}-{skill_name}
     // 我们需要找到这个技能在各个工具中的路径并删除
 

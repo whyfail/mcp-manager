@@ -2,7 +2,7 @@ use indexmap::IndexMap;
 use serde::Deserialize;
 use std::collections::HashMap;
 use std::fs;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use crate::agents::get_agent_config_paths;
 use crate::database::{McpApps, McpServer, McpServerSpec};
@@ -253,16 +253,6 @@ fn parse_server_config(id: &str, config: &serde_json::Value, app: &AppType) -> O
         docs,
         tags: vec![format!("imported-from-{}", app.name())],
     })
-}
-
-/// 展开 ~ 为 HOME 目录
-fn expand_home(path: &str) -> String {
-    if let Some(stripped) = path.strip_prefix("~/") {
-        if let Some(home) = dirs::home_dir() {
-            return home.join(stripped).to_string_lossy().to_string();
-        }
-    }
-    path.to_string()
 }
 
 /// 从所有支持的来源导入 MCP 配置

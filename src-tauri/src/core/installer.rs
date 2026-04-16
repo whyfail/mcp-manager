@@ -265,7 +265,7 @@ pub fn install_git_skill(
     }
 
     // After download, prefer the name from SKILL.md over the derived name
-    let (description, md_name) = match parse_skill_md(&central_path.join("SKILL.md")) {
+    let (_description, md_name) = match parse_skill_md(&central_path.join("SKILL.md")) {
         Some((n, d)) => (d, Some(n)),
         None => (None, None),
     };
@@ -342,7 +342,7 @@ pub fn install_git_skill_from_selection(
         .with_context(|| format!("copy {:?} -> {:?}", copy_src, central_path))?;
 
     // Prefer name from SKILL.md
-    let (description, md_name) = match parse_skill_md(&central_path.join("SKILL.md")) {
+    let (_description, md_name) = match parse_skill_md(&central_path.join("SKILL.md")) {
         Some((n, d)) => (d, Some(n)),
         None => (None, None),
     };

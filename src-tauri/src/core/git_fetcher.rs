@@ -138,7 +138,7 @@ fn run_command_with_timeout(cmd: &mut Command, timeout: Duration) -> Result<std:
         }
 
         match child.try_wait() {
-            Ok(Some(status)) => {
+            Ok(Some(_status)) => {
                 return child.wait_with_output()
                     .with_context(|| "wait for output");
             }

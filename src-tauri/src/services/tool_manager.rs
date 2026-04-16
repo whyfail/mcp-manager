@@ -369,7 +369,7 @@ impl ToolManagerService {
         None
     }
 
-    pub async fn install(app: &AppType, method: &InstallMethod) -> Result<(), String> {
+    pub async fn install(_app: &AppType, method: &InstallMethod) -> Result<(), String> {
         match method {
             #[cfg(not(windows))]
             InstallMethod::Brew { package } => {
@@ -557,8 +557,8 @@ impl ToolManagerService {
                 }
             }
             Some(InstallMethodType::Winget) | Some(InstallMethodType::Scoop) => {
-                // These should not be detected on non-Windows, but just in case
-                Err("Windows-specific installation method detected".into())
+                // These should not be detected on non-Windows/Windows respectively, but just in case
+                Err("Platform-specific installation method detected".into())
             }
             None => {
                 if !install_info.update_cmd.is_empty() {
