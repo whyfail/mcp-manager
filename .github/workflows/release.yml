@@ -187,8 +187,17 @@ jobs:
         uses: dtolnay/rust-toolchain@stable
 
       - name: Install WiX
-        run: winget install --id WiXToolset.WiX --source winget -e --silent --accept-package-agreements --accept-source-agreements
+        run: |
+          curl -L -o wix.exe https://github.com/wixtoolset/wix/releases/latest/download/wix.exe
+          start /wait wix.exe /quiet
 
+      - name: Add WiX to PATH
+        run: |
+          echo "C:\Program Files\WiX Toolset v4\bin" >> $env:GITHUB_PATH
+
+      - name: Check WiX
+        run: wix --version
+        
       - name: Install frontend dependencies
         run: pnpm install --frozen-lockfile
 
