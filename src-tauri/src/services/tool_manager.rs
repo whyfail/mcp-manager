@@ -556,6 +556,8 @@ impl ToolManagerService {
                     Self::execute_command(&mut cmd).await
                 }
             }
+            #[cfg(windows)]
+            Some(InstallMethodType::Brew) => unreachable!(),
             Some(InstallMethodType::Winget) | Some(InstallMethodType::Scoop) => {
                 // These should not be detected on non-Windows/Windows respectively, but just in case
                 Err("Platform-specific installation method detected".into())
