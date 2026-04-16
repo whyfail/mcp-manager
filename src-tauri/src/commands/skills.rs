@@ -696,9 +696,19 @@ pub async fn update_skill(
                     std::fs::remove_dir_all(&central_path_buf)
                         .map_err(|e| format!("Failed to remove old skill: {}", e))?;
                 }
-                // 重新安装
-                install_git_skill(&repo_url, Some(name), source_subpath.as_deref())
-                    .map_err(|e| format!("{:?}", e))?;
+                // 重新安装（可能因 APFS 延迟而报 "already exists"，此时重试一次）
+                let name_for_retry = name.clone();
+                if let Err(e) = install_git_skill(&repo_url, Some(name), source_subpath.as_deref()) {
+                    let err_msg = format!("{:?}", e);
+                    if err_msg.contains("already exists") {
+                        eprintln!("[DEBUG] Race condition detected, retrying after delay...");
+                        std::thread::sleep(std::time::Duration::from_millis(200));
+                        install_git_skill(&repo_url, Some(name_for_retry), source_subpath.as_deref())
+                            .map_err(|e| format!("{:?}", e))?;
+                    } else {
+                        return Err(err_msg);
+                    }
+                }
                 Ok(())
             })
             .await
