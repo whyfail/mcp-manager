@@ -276,7 +276,6 @@ impl ToolManagerService {
                 .stdout(Stdio::piped())
                 .stderr(Stdio::piped())
                 .output()
-                .await
                 .ok()?;
             if output.status.success() {
                 let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
@@ -318,7 +317,6 @@ impl ToolManagerService {
                         .stdout(Stdio::piped())
                         .stderr(Stdio::piped())
                         .output()
-                        .await
                         .ok()?;
                     if output.status.success() {
                         let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
