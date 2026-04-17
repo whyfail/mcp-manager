@@ -1,5 +1,5 @@
 use serde::Serialize;
-use tauri::{AppHandle, Emitter, Manager};
+use tauri::{AppHandle, Emitter};
 use tauri_plugin_updater::UpdaterExt;
 
 #[derive(Serialize, Clone)]
@@ -32,6 +32,7 @@ pub async fn check_update(app: AppHandle) -> Result<UpdateInfo, String> {
 
 /// 下载并安装更新
 #[tauri::command]
+#[allow(unreachable_code)]
 pub async fn install_update(app: AppHandle) -> Result<(), String> {
     let updater = app.updater().map_err(|e| e.to_string())?;
     let update = updater

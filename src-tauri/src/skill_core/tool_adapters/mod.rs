@@ -188,8 +188,6 @@ fn get_tool_binary_name(id: &ToolId) -> &'static str {
         ToolId::TraeCn => "trae-cn",
         ToolId::TraeSoloCn => "trae-solo-cn",
         ToolId::CodeBuddy => "codebuddy",
-        // 其他 ToolId 不支持 skills 同步
-        _ => "",
     }
 }
 
