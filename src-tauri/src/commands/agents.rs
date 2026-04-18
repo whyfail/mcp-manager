@@ -551,6 +551,7 @@ pub async fn launch_agent(agent_id: String, terminal_id: Option<String>) -> Resu
                 }
             }
             "warp" => {
+                // Warp 不支持 AppleScript do script，需通过 System Events 模拟键盘输入
                 let script = format!(
                     "tell application \"Warp\"\n\
                      activate\n\
@@ -568,6 +569,12 @@ pub async fn launch_agent(agent_id: String, terminal_id: Option<String>) -> Resu
                     .map_err(|e| format!("启动 {} 失败: {}", agent_id, e))?;
                 if !output.status.success() {
                     let stderr = String::from_utf8_lossy(&output.stderr);
+                    if stderr.contains("不允许发送按键") || stderr.contains("not allowed") || stderr.contains("1002") {
+                        return Err(format!(
+                            "启动 {} 失败: 需要辅助功能权限。请在「系统设置 → 隐私与安全性 → 辅助功能」中添加 AI Toolkit（或终端应用），然后重试。",
+                            agent_id
+                        ));
+                    }
                     return Err(format!("启动 {} 失败: {}", agent_id, stderr));
                 }
             }
@@ -589,49 +596,43 @@ pub async fn launch_agent(agent_id: String, terminal_id: Option<String>) -> Resu
                     .map_err(|e| format!("启动 {} 失败: {}", agent_id, e))?;
                 if !output.status.success() {
                     let stderr = String::from_utf8_lossy(&output.stderr);
+                    if stderr.contains("不允许发送按键") || stderr.contains("not allowed") || stderr.contains("1002") {
+                        return Err(format!(
+                            "启动 {} 失败: 需要辅助功能权限。请在「系统设置 → 隐私与安全性 → 辅助功能」中添加 AI Toolkit（或终端应用），然后重试。",
+                            agent_id
+                        ));
+                    }
                     return Err(format!("启动 {} 失败: {}", agent_id, stderr));
                 }
             }
             "kitty" => {
-                let script = format!(
-                    "tell application \"Kitty\"\n\
-                     activate\n\
-                     delay 0.5\n\
-                     tell application \"System Events\"\n\
-                     keystroke \"source {}\" & return\n\
-                     end tell\n\
-                     end tell",
-                    script_path
-                );
-                let output = Command::new("osascript")
+                // Kitty 支持 CLI 参数直接执行命令，无需 System Events
+                // 直接调用 kitty binary 启动新窗口执行脚本
+                let kitty_bin = "/Applications/kitty.app/Contents/MacOS/kitty";
+                let kitty_result = Command::new(kitty_bin)
                     .suppress_console()
-                    .args(["-e", &script])
-                    .output()
-                    .map_err(|e| format!("启动 {} 失败: {}", agent_id, e))?;
-                if !output.status.success() {
-                    let stderr = String::from_utf8_lossy(&output.stderr);
-                    return Err(format!("启动 {} 失败: {}", agent_id, stderr));
+                    .args(["sh", "-c", &format!("source {}", script_path)])
+                    .spawn();
+                match kitty_result {
+                    Ok(_) => {}
+                    Err(e) => {
+                        return Err(format!("启动 {} 失败: 无法启动 Kitty ({})", agent_id, e));
+                    }
                 }
             }
             "alacritty" => {
-                let script = format!(
-                    "tell application \"Alacritty\"\n\
-                     activate\n\
-                     delay 0.5\n\
-                     tell application \"System Events\"\n\
-                     keystroke \"source {}\" & return\n\
-                     end tell\n\
-                     end tell",
-                    script_path
-                );
-                let output = Command::new("osascript")
+                // Alacritty 支持 CLI 参数直接执行命令，无需 System Events
+                // 直接调用 alacritty binary 启动新窗口执行脚本
+                let alacritty_bin = "/Applications/Alacritty.app/Contents/MacOS/alacritty";
+                let alacritty_result = Command::new(alacritty_bin)
                     .suppress_console()
-                    .args(["-e", &script])
-                    .output()
-                    .map_err(|e| format!("启动 {} 失败: {}", agent_id, e))?;
-                if !output.status.success() {
-                    let stderr = String::from_utf8_lossy(&output.stderr);
-                    return Err(format!("启动 {} 失败: {}", agent_id, stderr));
+                    .args(["-e", "sh", &script_path])
+                    .spawn();
+                match alacritty_result {
+                    Ok(_) => {}
+                    Err(e) => {
+                        return Err(format!("启动 {} 失败: 无法启动 Alacritty ({})", agent_id, e));
+                    }
                 }
             }
             "fig" => {
@@ -652,6 +653,12 @@ pub async fn launch_agent(agent_id: String, terminal_id: Option<String>) -> Resu
                     .map_err(|e| format!("启动 {} 失败: {}", agent_id, e))?;
                 if !output.status.success() {
                     let stderr = String::from_utf8_lossy(&output.stderr);
+                    if stderr.contains("不允许发送按键") || stderr.contains("not allowed") || stderr.contains("1002") {
+                        return Err(format!(
+                            "启动 {} 失败: 需要辅助功能权限。请在「系统设置 → 隐私与安全性 → 辅助功能」中添加 AI Toolkit（或终端应用），然后重试。",
+                            agent_id
+                        ));
+                    }
                     return Err(format!("启动 {} 失败: {}", agent_id, stderr));
                 }
             }
@@ -673,6 +680,12 @@ pub async fn launch_agent(agent_id: String, terminal_id: Option<String>) -> Resu
                     .map_err(|e| format!("启动 {} 失败: {}", agent_id, e))?;
                 if !output.status.success() {
                     let stderr = String::from_utf8_lossy(&output.stderr);
+                    if stderr.contains("不允许发送按键") || stderr.contains("not allowed") || stderr.contains("1002") {
+                        return Err(format!(
+                            "启动 {} 失败: 需要辅助功能权限。请在「系统设置 → 隐私与安全性 → 辅助功能」中添加 AI Toolkit（或终端应用），然后重试。",
+                            agent_id
+                        ));
+                    }
                     return Err(format!("启动 {} 失败: {}", agent_id, stderr));
                 }
             }

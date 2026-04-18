@@ -52,7 +52,7 @@ AI 工具箱是一款**通用的 AI 编程工具管理工具**，支持统一管
 ## 📸 界面预览
 
 ### 主界面
-![主界面](https://minimax-algeng-chat-tts.oss-cn-wulanchabu.aliyuncs.com/ccv2%2F2026-04-14%2FMiniMax-M2.7-highspeed%2F2043301459721724270%2F96550826ecc8e3fe6dd9e5248437d77c5445f410badbad8116fb4947ed5636af..png?Expires=1776242038&OSSAccessKeyId=LTAI5tGLnRTkBjLuYPjNcKQ8&Signature=KLl7fA40w1lz0SNEvGiD%2BPp582k%3D)
+![主界面](assets/screenshots/main-panel.png)
 
 ## 🖥️ 系统支持
 

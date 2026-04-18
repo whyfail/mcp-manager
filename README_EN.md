@@ -52,7 +52,7 @@ AI Toolkit is a **universal AI programming tools management tool** that supports
 ## 📸 Screenshots
 
 ### Main Panel
-![Main Panel](https://minimax-algeng-chat-tts.oss-cn-wulanchabu.aliyuncs.com/ccv2%2F2026-04-14%2FMiniMax-M2.7-highspeed%2F2043301459721724270%2F96550826ecc8e3fe6dd9e5248437d77c5445f410badbad8116fb4947ed5636af..png?Expires=1776242038&OSSAccessKeyId=LTAI5tGLnRTkBjLuYPjNcKQ8&Signature=KLl7fA40w1lz0SNEvGiD%2BPp582k%3D)
+![Main Panel](assets/screenshots/main-panel.png)
 
 ## 🖥️ System Support
 
