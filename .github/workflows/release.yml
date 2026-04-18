@@ -149,138 +149,6 @@ jobs:
           path: release-assets/*
           if-no-files-found: warn
 
-  release-macos-intel:
-    name: Build and Release (macOS Intel)
-    runs-on: macos-13
-    permissions:
-      contents: write
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Setup Version
-        id: get_version
-        run: |
-          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
-            VERSION="${{ github.event.inputs.version }}"
-          else
-            VERSION="${GITHUB_REF_NAME#v}"
-          fi
-          echo "VERSION=$VERSION" >> $GITHUB_OUTPUT
-          echo "VERSION is $VERSION"
-
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v4
-        with:
-          version: 9
-
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: 20
-          cache: 'pnpm'
-
-      - name: Install Rust stable
-        uses: dtolnay/rust-toolchain@stable
-
-      - name: Install frontend dependencies
-        run: pnpm install --frozen-lockfile
-
-      - name: Build Tauri App (macOS Intel)
-        shell: bash
-        timeout-minutes: 60
-        env:
-          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
-          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
-        run: |
-          set -euo pipefail
-          max_attempts=3
-          for attempt in $(seq 1 "$max_attempts"); do
-            echo "=== macOS Intel build attempt ${attempt}/${max_attempts} ==="
-            if pnpm tauri build; then
-              echo "✅ macOS Intel build succeeded"
-              exit 0
-            fi
-
-            if [ "$attempt" -eq "$max_attempts" ]; then
-              echo "❌ macOS Intel build failed after ${max_attempts} attempts" >&2
-              exit 1
-            fi
-
-            sleep_seconds=$((attempt * 60))
-            echo "⚠️ macOS Intel build failed, retrying in ${sleep_seconds}s..."
-            sleep "$sleep_seconds"
-          done
-
-      - name: Prepare macOS Assets
-        shell: bash
-        env:
-          VERSION: ${{ steps.get_version.outputs.VERSION }}
-        run: |
-          set -euxo pipefail
-          mkdir -p release-assets
-          ARCH="x86_64"
-
-          # Recursively search for artifacts
-          BUNDLE_DIR=$(find src-tauri/target -name "bundle" -type d | head -1 || true)
-
-          if [ -z "$BUNDLE_DIR" ]; then
-            echo "❌ No bundle directory found" >&2
-            exit 1
-          fi
-
-          echo "📦 Found bundle dir: $BUNDLE_DIR"
-
-          APP_PATH=$(find "$BUNDLE_DIR" -name "*.app" -type d 2>/dev/null | head -1 || true)
-          DMG_PATH=$(find "$BUNDLE_DIR" -name "*.dmg" -type f 2>/dev/null | head -1 || true)
-
-          if [ -z "$APP_PATH" ] && [ -z "$DMG_PATH" ]; then
-            echo "❌ No macOS artifacts found in $BUNDLE_DIR" >&2
-            exit 1
-          fi
-
-          # Copy .dmg if available (for manual installation)
-          if [ -n "$DMG_PATH" ]; then
-            NEW_DMG="AI_Toolkit-${VERSION}-macOS-${ARCH}.dmg"
-            cp "$DMG_PATH" "release-assets/$NEW_DMG"
-            echo "✅ macOS dmg ready: $NEW_DMG"
-          fi
-
-          # Copy .app.tar.gz (updater bundle) and signature
-          APP_TAR=$(find "$BUNDLE_DIR" -name "*.app.tar.gz" -type f 2>/dev/null | head -1)
-          if [ -n "$APP_TAR" ]; then
-            NEW_APP_TAR="AI_Toolkit-${VERSION}-macOS-${ARCH}.app.tar.gz"
-            cp "$APP_TAR" "release-assets/$NEW_APP_TAR"
-            echo "✅ macOS updater bundle ready: $NEW_APP_TAR"
-          fi
-
-          # Copy signature file if available
-          SIG_FILE=$(find src-tauri/target -name "*.app.tar.gz.sig" -type f 2>/dev/null | head -1)
-          if [ -n "$SIG_FILE" ]; then
-            cp "$SIG_FILE" "release-assets/AI_Toolkit-${VERSION}-macOS-${ARCH}.app.tar.gz.sig"
-            echo "✅ signature file ready: $(basename "$SIG_FILE")"
-            echo "   from: $SIG_FILE"
-          else
-            echo "⚠️ No .app.tar.gz.sig file found"
-            echo "   Searching for any .sig files..."
-            find src-tauri/target -name "*.sig" -type f 2>/dev/null | while read -r f; do echo "   Found: $f"; done || echo "   None found"
-            exit 1
-          fi
-
-          # Debug: list all files in bundle directory
-          echo "📦 Bundle directory contents:"
-          find "$BUNDLE_DIR" -type f 2>/dev/null | head -20 || true
-
-      - name: Upload release artifacts to workflow
-        uses: actions/upload-artifact@v4
-        with:
-          name: release-assets-macos-x86_64
-          path: release-assets/*
-          if-no-files-found: warn
-
-  release-windows:
     name: Build and Release (Windows)
     runs-on: windows-latest
     permissions:
@@ -424,7 +292,7 @@ jobs:
   publish-release:
     name: Publish GitHub Release
     runs-on: ubuntu-22.04
-    needs: [release-macos, release-macos-intel, release-windows]
+    needs: [release-macos, release-windows]
     permissions:
       contents: write
     steps:
@@ -471,21 +339,15 @@ jobs:
           # Get file sizes
           # For updater bundles (not installers)
           APP_TAR_AARCH64_FILE=$(find release-assets -name "*-aarch64.app.tar.gz" -type f | head -1)
-          APP_TAR_X86_64_FILE=$(find release-assets -name "*-x86_64.app.tar.gz" -type f | head -1)
           MSI_ZIP_FILE=$(find release-assets -name "*.msi.zip" -type f | head -1)
           APP_TAR_AARCH64_SIG=$(find release-assets -name "*-aarch64.app.tar.gz.sig" -type f | head -1)
-          APP_TAR_X86_64_SIG=$(find release-assets -name "*-x86_64.app.tar.gz.sig" -type f | head -1)
           MSI_ZIP_SIG=$(find release-assets -name "*.msi.sig" -type f | head -1)
 
           APP_TAR_AARCH64_SIG_CONTENT=""
-          APP_TAR_X86_64_SIG_CONTENT=""
           MSI_ZIP_SIG_CONTENT=""
 
           if [ -n "$APP_TAR_AARCH64_SIG" ]; then
             APP_TAR_AARCH64_SIG_CONTENT=$(cat "$APP_TAR_AARCH64_SIG")
-          fi
-          if [ -n "$APP_TAR_X86_64_SIG" ]; then
-            APP_TAR_X86_64_SIG_CONTENT=$(cat "$APP_TAR_X86_64_SIG")
           fi
           if [ -n "$MSI_ZIP_SIG" ]; then
             MSI_ZIP_SIG_CONTENT=$(cat "$MSI_ZIP_SIG")
@@ -499,10 +361,8 @@ jobs:
             --arg ver "${VERSION}" \
             --arg date "${RELEASE_DATE}" \
             --arg app_tar_aarch64_sig "${APP_TAR_AARCH64_SIG_CONTENT}" \
-            --arg app_tar_x86_64_sig "${APP_TAR_X86_64_SIG_CONTENT}" \
             --arg msi_zip_sig "${MSI_ZIP_SIG_CONTENT}" \
             --arg app_tar_aarch64_url "${DOWNLOAD_BASE}/AI_Toolkit-${VERSION}-macOS-aarch64.app.tar.gz" \
-            --arg app_tar_x86_64_url "${DOWNLOAD_BASE}/AI_Toolkit-${VERSION}-macOS-x86_64.app.tar.gz" \
             --arg msi_zip_url "${DOWNLOAD_BASE}/AI_Toolkit-${VERSION}-Windows-x64.msi.zip" \
             --arg notes "See changelog at https://github.com/whyfail/ai-tool-manager/releases/tag/v${VERSION}" \
             '{
@@ -513,10 +373,6 @@ jobs:
                 "darwin-aarch64": {
                   signature: $app_tar_aarch64_sig,
                   url: $app_tar_aarch64_url
-                },
-                "darwin-x86_64": {
-                  signature: $app_tar_x86_64_sig,
-                  url: $app_tar_x86_64_url
                 },
                 "windows-x86_64": {
                   signature: $msi_zip_sig,
@@ -543,14 +399,12 @@ jobs:
             | System | Status |
             |--------|--------|
             | **macOS 12+ (Apple Silicon)** | ✅ Supported |
-            | **macOS 12+ (Intel)** | ✅ Supported |
             | **Windows 10+** | ✅ Supported |
             | **Linux** | 🚧 In Progress |
 
             ### 📥 Downloads
 
             - **macOS (Apple Silicon)**: `AI_Tool_Manager-${{ steps.get_version_release.outputs.VERSION }}-macOS-aarch64.dmg`
-            - **macOS (Intel)**: `AI_Tool_Manager-${{ steps.get_version_release.outputs.VERSION }}-macOS-x86_64.dmg`
             - **Windows (x64)**: `AI_Tool_Manager-${{ steps.get_version_release.outputs.VERSION }}-Windows-x64.msi`
 
             **Note**: Auto-updater uses `.app.tar.gz` (macOS) and `.msi.zip` (Windows) bundles which are included in this release.
