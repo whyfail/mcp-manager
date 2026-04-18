@@ -35,8 +35,13 @@ fn git_clone(repo_url: &str, dest: &Path, branch: Option<&str>) -> Result<String
         .stderr(Stdio::piped())
         .arg("clone")
         .args(["--depth", "1", "--filter=blob:none", "--no-tags"])
-        .env("GIT_TERMINAL_PROMPT", "0")
-        .env("GIT_ASKPASS", "echo");
+        .env("GIT_TERMINAL_PROMPT", "0");
+
+    // `echo` is a Unix builtin; on Windows it doesn't exist as a standalone
+    // executable, so GIT_ASKPASS=echo would fail.  Rely solely on
+    // GIT_TERMINAL_PROMPT=0 to suppress interactive prompts.
+    #[cfg(not(windows))]
+    cmd.env("GIT_ASKPASS", "echo");
 
     if let Some(b) = branch {
         cmd.arg("--branch").arg(b).arg("--single-branch");

@@ -260,20 +260,21 @@ jobs:
             }
             
           # 查找签名文件
-          $sigFile = Get-ChildItem -Path $fullBundleDir -Name '*.msi.sig' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
+          # Tauri v2 生成 .msi.zip.sig（对应 .msi.zip 更新包）
+          $sigFile = Get-ChildItem -Path $fullBundleDir -Name '*.msi.zip.sig' -Recurse -ErrorAction SilentlyContinue | Select-Object -First 1
           if ($sigFile) {
-            $dest = "AI_Toolkit-$env:VERSION-Windows-x64.msi.sig"
+            $dest = "AI_Toolkit-$env:VERSION-Windows-x64.msi.zip.sig"
             Copy-Item (Join-Path $fullBundleDir $sigFile) (Join-Path release-assets $dest)
             Write-Host "✅ Windows signature file ready: $dest"
           } else {
-            Write-Host "⚠️ No .msi.sig file found, searching for any .sig files..."
+            Write-Host "⚠️ No .msi.zip.sig file found, searching for any .sig files..."
             $allSigFiles = Get-ChildItem -Path $fullBundleDir -Name '*.sig' -Recurse -ErrorAction SilentlyContinue
             if ($allSigFiles) {
               $allSigFiles | ForEach-Object { Write-Host "  Found: $_" }
             } else {
               Write-Host "  No .sig files found at all"
             }
-            Write-Error "No .msi.sig file found"
+            Write-Error "No .msi.zip.sig file found"
             exit 1
           }
           } else {
@@ -342,7 +343,7 @@ jobs:
           APP_TAR_AARCH64_FILE=$(find release-assets -name "*-aarch64.app.tar.gz" -type f | head -1)
           MSI_ZIP_FILE=$(find release-assets -name "*.msi.zip" -type f | head -1)
           APP_TAR_AARCH64_SIG=$(find release-assets -name "*-aarch64.app.tar.gz.sig" -type f | head -1)
-          MSI_ZIP_SIG=$(find release-assets -name "*.msi.sig" -type f | head -1)
+          MSI_ZIP_SIG=$(find release-assets -name "*.msi.zip.sig" -type f | head -1)
 
           APP_TAR_AARCH64_SIG_CONTENT=""
           MSI_ZIP_SIG_CONTENT=""

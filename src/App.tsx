@@ -200,6 +200,7 @@ const SettingsTab: React.FC = () => {
       }
     } catch (err) {
       console.error("检查更新失败:", err);
+      toast.error(`检查更新失败: ${err}`);
     } finally {
       setChecking(false);
     }

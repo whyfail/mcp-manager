@@ -13,20 +13,37 @@ pub struct UpdateInfo {
 /// 检查更新
 #[tauri::command]
 pub async fn check_update(app: AppHandle) -> Result<UpdateInfo, String> {
-    let updater = app.updater().map_err(|e| e.to_string())?;
-    match updater.check().await.map_err(|e| e.to_string())? {
-        Some(update) => Ok(UpdateInfo {
+    let updater = app.updater().map_err(|e| format!("更新器初始化失败: {}", e))?;
+    match updater.check().await {
+        Ok(Some(update)) => Ok(UpdateInfo {
             available: true,
             version: update.version.clone(),
             body: update.body.clone(),
             date: update.date.map(|d| d.to_string()),
         }),
-        None => Ok(UpdateInfo {
+        Ok(None) => Ok(UpdateInfo {
             available: false,
             version: String::new(),
             body: None,
             date: None,
         }),
+        Err(e) => {
+            let err_msg = e.to_string();
+            if err_msg.contains("network")
+                || err_msg.contains("fetch")
+                || err_msg.contains("connect")
+                || err_msg.contains("timeout")
+                || err_msg.contains("dns")
+            {
+                Err(format!("无法连接到更新服务器，请检查网络连接: {}", err_msg))
+            } else if err_msg.contains("signature") || err_msg.contains("verify") {
+                Err(format!("更新包签名验证失败: {}", err_msg))
+            } else if err_msg.contains("parse") || err_msg.contains("json") {
+                Err(format!("更新信息解析失败: {}", err_msg))
+            } else {
+                Err(format!("检查更新失败: {}", err_msg))
+            }
+        }
     }
 }
 

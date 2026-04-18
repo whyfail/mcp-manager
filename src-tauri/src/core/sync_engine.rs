@@ -74,7 +74,7 @@ pub fn sync_dir_hybrid_with_overwrite(
         }
 
         if overwrite {
-            std::fs::remove_dir_all(target)
+            remove_path_any(target)
                 .with_context(|| format!("remove existing target {:?}", target))?;
             did_replace = true;
         } else {
@@ -174,35 +174,67 @@ fn remove_path_any(path: &Path) -> Result<()> {
 fn is_same_link(link_path: &Path, target: &Path) -> bool {
     // Try read_link first (works for symbolic links)
     if let Ok(existing) = std::fs::read_link(link_path) {
-        return existing == target;
-    }
+        // Resolve relative paths against the link's parent directory
+        let existing_resolved = if existing.is_absolute() {
+            existing.clone()
+        } else {
+            link_path.parent().unwrap_or(Path::new(".")).join(&existing)
+        };
 
-    // On Windows, read_link doesn't work for junctions.
-    // Use fsutil to query the reparse point target.
-    #[cfg(windows)]
-    {
-        let output = std::process::Command::new("fsutil")
-            .suppress_console()
-            .args(["reparsepoint", "query", link_path.to_string_lossy().as_ref()])
-            .output();
-        if let Ok(output) = output {
-            if output.status.success() {
-                let stdout = String::from_utf8_lossy(&output.stdout);
-                // fsutil outputs "Symbolic Link" or "Mount Point" and "Print Name: <target>"
-                if let Some(print_name_pos) = stdout.find("Print Name:") {
-                    let after_print_name = &stdout[print_name_pos + 11..];
-                    // The target path is typically in quotes like: :\path\to\target
-                    let trimmed = after_print_name.trim();
-                    // Handle various formats that fsutil might output
-                    let target_str = trimmed.trim_start_matches('"').trim_end_matches('"');
-                    let target_path = PathBuf::from(target_str);
-                    return target_path == target;
+        // Canonicalize both paths for reliable comparison
+        if let (Ok(existing_norm), Ok(target_norm)) =
+            (existing_resolved.canonicalize(), target.canonicalize())
+        {
+            #[cfg(windows)]
+            {
+                // Windows paths are case-insensitive
+                existing_norm.to_string_lossy().to_lowercase()
+                    == target_norm.to_string_lossy().to_lowercase()
+            }
+            #[cfg(not(windows))]
+            {
+                existing_norm == target_norm
+            }
+        } else {
+            // Fallback to direct comparison if canonicalization fails
+            existing == target
+        }
+    } else {
+        // read_link failed — on Windows this may be a junction
+        #[cfg(windows)]
+        {
+            let output = std::process::Command::new("fsutil")
+                .suppress_console()
+                .args(["reparsepoint", "query", link_path.to_string_lossy().as_ref()])
+                .output();
+            if let Ok(output) = output {
+                if output.status.success() {
+                    let stdout = String::from_utf8_lossy(&output.stdout);
+                    for line in stdout.lines() {
+                        if line.contains("Print Name:") {
+                            let target_str = line.splitn(2, ':').nth(1).unwrap_or("").trim();
+                            let target_str = target_str.trim_start_matches('"').trim_end_matches('"');
+                            let reparsed = PathBuf::from(target_str);
+                            if let (Ok(reparse_norm), Ok(target_norm)) =
+                                (reparsed.canonicalize(), target.canonicalize())
+                            {
+                                if reparse_norm.to_string_lossy().to_lowercase()
+                                    == target_norm.to_string_lossy().to_lowercase()
+                                {
+                                    return true;
+                                }
+                            }
+                        }
+                    }
                 }
             }
+            false
+        }
+        #[cfg(not(windows))]
+        {
+            false
         }
     }
-
-    false
 }
 
 fn try_link_dir(source: &Path, target: &Path) -> Result<()> {

@@ -363,18 +363,14 @@ const ToolManagerPanel: React.FC = () => {
     mutationFn: async (appType: string) => {
       setUpdatingTool(appType);
       await toolApi.updateTool(appType);
-      const updatedInfo = await toolApi.getToolInfo(appType);
-      return updatedInfo;
+      // 等待二进制文件替换完成（npm postinstall/符号链接更新延迟）
+      await new Promise(resolve => setTimeout(resolve, 2000));
     },
-    onSuccess: (updatedInfo) => {
+    onSuccess: () => {
       toast.success("更新成功");
       setUpdatingTool(null);
-      queryClient.setQueryData(["tool-infos"], (old: any) => {
-        if (!old) return old;
-        return old.map((tool: any) => 
-          tool.app_type === updatedInfo.app_type ? updatedInfo : tool
-        );
-      });
+      // 使用 invalidateQueries 让 TanStack Query 重新获取全量数据
+      queryClient.invalidateQueries({ queryKey: ["tool-infos"] });
     },
     onError: (error: unknown) => {
       const message = error instanceof Error ? error.message : String(error);

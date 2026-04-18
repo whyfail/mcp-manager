@@ -1,5 +1,5 @@
 use serde::Serialize;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use tauri::State;
 use crate::core::installer::{install_git_skill, install_git_skill_from_selection, scan_git_skill_candidates, GitSkillCandidate};
 use crate::core::central_repo::resolve_central_repo_path;
@@ -8,9 +8,58 @@ use crate::core::skills_search::{search_skills_online as search_skills_online_co
 use crate::skill_core::tool_adapters::{get_all_tool_status, default_tool_adapters, resolve_default_path, scan_tool_dir, is_tool_installed, ToolStatus, adapter_by_key};
 use crate::database::SkillRecord;
 use crate::app_state::AppState;
+#[cfg(windows)]
+use crate::utils::SuppressConsole;
 
 // Skills management commands
 // Migrated from skills-hub-main
+
+/// Safely remove a path, handling Windows junctions correctly.
+/// On Windows, junctions are directory-like reparse points that `remove_file`
+/// cannot delete (DeleteFile API fails on directories) and `remove_dir_all`
+/// would recursively delete the *target* contents instead of just the link.
+fn safe_remove(path: &Path) -> std::io::Result<()> {
+    if path.is_dir() {
+        #[cfg(windows)]
+        {
+            // On Windows, junction / directory symlink must be removed with rmdir
+            // which only deletes the reparse point, not the target contents.
+            let output = std::process::Command::new("cmd")
+                .suppress_console()
+                .args(["/c", "rmdir", path.to_string_lossy().as_ref()])
+                .output();
+            if let Ok(out) = output {
+                if out.status.success() {
+                    return Ok(());
+                }
+                // rmdir failed — fall through to remove_dir
+            }
+        }
+        std::fs::remove_dir(path)
+    } else {
+        std::fs::remove_file(path)
+    }
+}
+
+/// Check if a directory path is a Windows junction (reparse point that
+/// `is_symlink()` may not detect). Always returns false on non-Windows.
+#[cfg(windows)]
+fn is_junction(path: &Path) -> bool {
+    if !path.is_dir() {
+        return false;
+    }
+    // Use fsutil to check if the path has a reparse point.
+    let output = std::process::Command::new("fsutil")
+        .suppress_console()
+        .args(["reparsepoint", "query", path.to_string_lossy().as_ref()])
+        .output();
+    matches!(output, Ok(o) if o.status.success())
+}
+
+#[cfg(not(windows))]
+fn is_junction(_path: &Path) -> bool {
+    false
+}
 
 #[derive(Clone, Debug, Serialize)]
 pub struct SyncTarget {
@@ -618,7 +667,7 @@ pub async fn delete_managed_skill(_skill_id: String, skill_name: String) -> Resu
     for (path, is_link) in paths_to_delete {
         if path.exists() {
             if is_link {
-                if let Err(e) = std::fs::remove_file(&path) {
+                if let Err(e) = safe_remove(&path) {
                     eprintln!("Warning: failed to remove symlink {}: {}", path.display(), e);
                 }
             } else {
@@ -669,7 +718,7 @@ pub async fn unsync_skill_from_tool(
                 let path = &skill.path;
                 if path.exists() {
                     if skill.is_link {
-                        if let Err(e) = std::fs::remove_file(path) {
+                        if let Err(e) = safe_remove(path) {
                             eprintln!("Warning: failed to remove symlink {}: {}", path.display(), e);
                         }
                     } else {
@@ -716,8 +765,17 @@ pub async fn update_skill(
                 let central_path_buf = PathBuf::from(&central_path);
                 if central_path_buf.exists() {
                     eprintln!("[DEBUG] Removing existing skill directory: {:?}", central_path_buf);
-                    std::fs::remove_dir_all(&central_path_buf)
-                        .map_err(|e| format!("Failed to remove old skill: {}", e))?;
+                    // Check if the path is a junction / symlink — if so, only remove
+                    // the link itself, not the target contents.
+                    let is_link = central_path_buf.is_symlink()
+                        || cfg!(windows) && central_path_buf.is_dir() && is_junction(&central_path_buf);
+                    if is_link {
+                        safe_remove(&central_path_buf)
+                            .map_err(|e| format!("Failed to remove old skill link: {}", e))?;
+                    } else {
+                        std::fs::remove_dir_all(&central_path_buf)
+                            .map_err(|e| format!("Failed to remove old skill: {}", e))?;
+                    }
                 }
                 // 重新安装（可能因 APFS 延迟而报 "already exists"，此时重试一次）
                 let name_for_retry = name.clone();
@@ -815,13 +873,13 @@ pub async fn rename_skill(
                 } else {
                     // 先删除目标（如果存在）
                     if new_tool_skill_path.exists() {
-                        if new_tool_skill_path.is_symlink() {
-                            std::fs::remove_file(&new_tool_skill_path)
-                                .map_err(|e| format!("删除目标符号链接失败: {}", e))?;
-                        } else {
-                            std::fs::remove_dir_all(&new_tool_skill_path)
-                                .map_err(|e| format!("删除目标目录失败: {}", e))?;
-                        }
+                    if new_tool_skill_path.is_symlink() {
+                        safe_remove(&new_tool_skill_path)
+                            .map_err(|e| format!("删除目标符号链接失败: {}", e))?
+                    } else {
+                        std::fs::remove_dir_all(&new_tool_skill_path)
+                            .map_err(|e| format!("删除目标目录失败: {}", e))?
+                    }
                     }
                     std::fs::rename(&old_tool_skill_path, &new_tool_skill_path)
                         .map_err(|e| format!("重命名工具技能文件夹失败: {}", e))?;
