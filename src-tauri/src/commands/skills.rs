@@ -990,3 +990,54 @@ pub async fn get_featured_skills() -> Result<Vec<FeaturedSkillDto>, String> {
     .map_err(|e| e.to_string())?
     .map_err(|e| e.to_string())
 }
+
+#[derive(Clone, Debug, Serialize)]
+pub struct LocalSkillValidation {
+    pub valid: bool,
+    pub reason: Option<String>,
+}
+
+#[tauri::command]
+pub async fn validate_local_skill(path: String) -> Result<LocalSkillValidation, String> {
+    tokio::task::spawn_blocking(move || -> Result<LocalSkillValidation, String> {
+        let dir = PathBuf::from(&path);
+        if !dir.exists() {
+            return Ok(LocalSkillValidation {
+                valid: false,
+                reason: Some("路径不存在".to_string()),
+            });
+        }
+        if !dir.is_dir() {
+            return Ok(LocalSkillValidation {
+                valid: false,
+                reason: Some("路径不是文件夹".to_string()),
+            });
+        }
+
+        // 检查是否包含 SKILL.md / skill.md
+        let has_skill_md = dir.join("SKILL.md").exists() || dir.join("skill.md").exists();
+        if has_skill_md {
+            return Ok(LocalSkillValidation {
+                valid: true,
+                reason: None,
+            });
+        }
+
+        // 检查是否包含其他常见 skill 标识文件
+        let has_skill_json = dir.join("skill.json").exists();
+        if has_skill_json {
+            return Ok(LocalSkillValidation {
+                valid: true,
+                reason: None,
+            });
+        }
+
+        Ok(LocalSkillValidation {
+            valid: false,
+            reason: Some("该文件夹不是有效的技能目录（缺少 SKILL.md 或 skill.json）".to_string()),
+        })
+    })
+    .await
+    .map_err(|e| e.to_string())?
+    .map_err(|e| e.to_string())
+}

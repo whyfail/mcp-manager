@@ -2,7 +2,7 @@ import { useState, useCallback, useEffect } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { open as openUrl } from '@tauri-apps/plugin-shell';
 import * as dialog from '@tauri-apps/plugin-dialog';
-import { GitBranch, Folder, Search, X, ChevronRight, Loader2, Check, Globe, Star, ArrowLeft, ExternalLink, Eye } from 'lucide-react';
+import { GitBranch, Folder, Search, X, ChevronRight, Loader2, Check, Globe, Star, ArrowLeft, ExternalLink, Eye, RotateCcw } from 'lucide-react';
 import { toast } from 'sonner';
 import type { ToolOption, OnlineSkillDto } from '../types';
 import GitPickModal, { type GitSkillCandidate } from './GitPickModal';
@@ -28,6 +28,9 @@ interface AddSkillModalProps {
 
 type Tab = 'git' | 'local' | 'online';
 
+/** Git 标签页的阶段：input=输入URL | previewed=已预览 */
+type GitPhase = 'input' | 'previewed';
+
 function AddSkillModal({ open, onClose, tools, syncTargets, onSyncTargetChange, onSkillAdded }: AddSkillModalProps) {
   const [activeTab, setActiveTab] = useState<Tab>('git');
   const [loading, setLoading] = useState(false);
@@ -36,8 +39,25 @@ function AddSkillModal({ open, onClose, tools, syncTargets, onSyncTargetChange, 
   const [gitName, setGitName] = useState('');
   const [localPath, setLocalPath] = useState('');
   const [localName, setLocalName] = useState('');
+  const [localValid, setLocalValid] = useState(false);
+  const [localValidationError, setLocalValidationError] = useState<string | null>(null);
 
-  // Online search state
+  // 验证本地文件夹是否为合规的技能目录
+  const validateLocalPath = useCallback(async (path: string) => {
+    if (!path.trim()) {
+      setLocalValid(false);
+      setLocalValidationError(null);
+      return;
+    }
+    try {
+      const result = await invoke<{ valid: boolean; reason: string | null }>('validate_local_skill', { path: path.trim() });
+      setLocalValid(result.valid);
+      setLocalValidationError(result.valid ? null : result.reason);
+    } catch (err) {
+      setLocalValid(false);
+      setLocalValidationError(err instanceof Error ? err.message : String(err));
+    }
+  }, []);
   const [onlineQuery, setOnlineQuery] = useState('');
   const [searchResults, setSearchResults] = useState<OnlineSkillDto[]>([]);
   const [searchLoading, setSearchLoading] = useState(false);
@@ -56,6 +76,10 @@ function AddSkillModal({ open, onClose, tools, syncTargets, onSyncTargetChange, 
   const [gitCandidates, setGitCandidates] = useState<GitSkillCandidate[]>([]);
   const [selectedGitCandidates, setSelectedGitCandidates] = useState<GitSkillCandidate[]>([]);
   const [showGitPickModal, setShowGitPickModal] = useState(false);
+  const [gitPhase, setGitPhase] = useState<GitPhase>('input');
+
+  // 每个选中候选技能的自定义名称映射：subpath -> 自定义名称
+  const [gitSkillNames, setGitSkillNames] = useState<Record<string, string>>({});
 
   // Load featured skills when entering online tab
   useEffect(() => {
@@ -76,6 +100,15 @@ function AddSkillModal({ open, onClose, tools, syncTargets, onSyncTargetChange, 
     }
   };
 
+  const resetGitState = useCallback(() => {
+    setGitCandidates([]);
+    setSelectedGitCandidates([]);
+    setGitScanError(null);
+    setGitPhase('input');
+    setGitName('');
+    setGitSkillNames({});
+  }, []);
+
   const handleScanGitRepo = useCallback(async () => {
     if (!gitUrl.trim()) {
       setGitScanError('请输入 Git 仓库 URL');
@@ -85,6 +118,7 @@ function AddSkillModal({ open, onClose, tools, syncTargets, onSyncTargetChange, 
     setGitScanError(null);
     setGitCandidates([]);
     setSelectedGitCandidates([]);
+    setGitSkillNames({});
     try {
       const candidates = await invoke<GitSkillCandidate[]>('list_git_skills', {
         repoUrl: gitUrl.trim(),
@@ -96,11 +130,16 @@ function AddSkillModal({ open, onClose, tools, syncTargets, onSyncTargetChange, 
       }
 
       setGitCandidates(candidates);
-      setSelectedGitCandidates([candidates[0]]);
-      setGitName(candidates[0].name);
 
-      if (candidates.length > 1) {
+      if (candidates.length === 1) {
+        // 单个技能：直接进入预览状态
+        setSelectedGitCandidates([candidates[0]]);
+        setGitName(candidates[0].name);
+        setGitPhase('previewed');
+      } else {
         // 多个技能：弹出选择窗口
+        setSelectedGitCandidates([candidates[0]]);
+        setGitSkillNames({ [candidates[0].subpath]: candidates[0].name });
         setShowGitPickModal(true);
       }
     } catch (err) {
@@ -115,21 +154,32 @@ function AddSkillModal({ open, onClose, tools, syncTargets, onSyncTargetChange, 
     setSelectedGitCandidates((prev) => {
       const exists = prev.some((c) => c.subpath === candidate.subpath);
       if (exists) {
+        // 移除时也清理名称映射
+        setGitSkillNames(names => {
+          const next = { ...names };
+          delete next[candidate.subpath];
+          return next;
+        });
         return prev.filter((c) => c.subpath !== candidate.subpath);
       } else {
+        // 添加时初始化名称映射
+        setGitSkillNames(names => ({
+          ...names,
+          [candidate.subpath]: candidate.name,
+        }));
         return [...prev, candidate];
       }
     });
   }, []);
 
-  // GitPickModal 确认：仅关闭弹窗，数据已回填到 selectedGitCandidates
+  // GitPickModal 确认：关闭弹窗，进入预览状态
   const handleGitCandidatesConfirm = useCallback(() => {
     if (selectedGitCandidates.length === 0) {
       toast.warning('请先选择要安装的技能');
       return;
     }
-
     setShowGitPickModal(false);
+    setGitPhase('previewed');
   }, [selectedGitCandidates]);
 
   const handleTabChange = (tab: Tab) => {
@@ -137,9 +187,7 @@ function AddSkillModal({ open, onClose, tools, syncTargets, onSyncTargetChange, 
     setDetailSkill(null);
     // Reset git scanning state when switching tabs
     if (tab !== 'git') {
-      setGitCandidates([]);
-      setSelectedGitCandidates([]);
-      setGitScanError(null);
+      resetGitState();
     }
   };
 
@@ -152,25 +200,26 @@ function AddSkillModal({ open, onClose, tools, syncTargets, onSyncTargetChange, 
       });
       if (!selected || Array.isArray(selected)) return;
       setLocalPath(selected);
+      validateLocalPath(selected);
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
-  }, []);
+  }, [validateLocalPath]);
 
-  // 点击"添加技能"按钮：有预选 candidates 则安装，否则先扫描
+  // 点击"添加技能"按钮
   const handleCreateGit = useCallback(async () => {
     if (!gitUrl.trim()) {
       setError('请输入Git仓库URL');
       return;
     }
 
-    // 如果没有预选 candidates，先扫描
-    if (selectedGitCandidates.length === 0) {
+    // 如果还在 input 阶段，先预览
+    if (gitPhase === 'input') {
       await handleScanGitRepo();
       return;
     }
 
-    // 有预选 candidates，开始安装
+    // previewed 阶段，开始安装
     const selectedTools = tools.filter(tool => syncTargets[tool.id]);
     setLoading(true);
     setError(null);
@@ -179,6 +228,12 @@ function AddSkillModal({ open, onClose, tools, syncTargets, onSyncTargetChange, 
       const installedNames: string[] = [];
 
       for (const candidate of selectedGitCandidates) {
+        // 单个技能用 gitName，多个技能用各自 gitSkillNames 中的值
+        const customName = selectedGitCandidates.length === 1
+          ? gitName.trim()
+          : (gitSkillNames[candidate.subpath]?.trim() || candidate.name);
+        const skillName = customName || candidate.name;
+
         const created = await invoke<{
           id: string;
           name: string;
@@ -186,7 +241,7 @@ function AddSkillModal({ open, onClose, tools, syncTargets, onSyncTargetChange, 
         }>('install_git_selection', {
           repoUrl: gitUrl.trim(),
           subpath: candidate.subpath,
-          name: candidate.name,
+          name: skillName,
         });
 
         for (const tool of selectedTools) {
@@ -202,9 +257,7 @@ function AddSkillModal({ open, onClose, tools, syncTargets, onSyncTargetChange, 
       }
 
       setGitUrl('');
-      setGitName('');
-      setGitCandidates([]);
-      setSelectedGitCandidates([]);
+      resetGitState();
       toast.success(`${installedNames.length > 1 ? `技能 "${installedNames.join(', ')}"` : `技能 "${installedNames[0]}"`} 添加成功`);
       onClose();
       onSkillAdded();
@@ -214,7 +267,7 @@ function AddSkillModal({ open, onClose, tools, syncTargets, onSyncTargetChange, 
     } finally {
       setLoading(false);
     }
-  }, [gitUrl, selectedGitCandidates, handleScanGitRepo, tools, syncTargets, onClose, onSkillAdded]);
+  }, [gitUrl, gitPhase, selectedGitCandidates, gitName, gitSkillNames, handleScanGitRepo, tools, syncTargets, onClose, onSkillAdded, resetGitState]);
 
   const handleCreateLocal = useCallback(async () => {
     if (!localPath.trim()) {
@@ -286,6 +339,7 @@ function AddSkillModal({ open, onClose, tools, syncTargets, onSyncTargetChange, 
     setGitUrl(skill.source_url);
     setGitName(skill.name);
     setActiveTab('git');
+    resetGitState();
   };
 
   const toggleTool = (toolId: string) => {
@@ -305,6 +359,9 @@ function AddSkillModal({ open, onClose, tools, syncTargets, onSyncTargetChange, 
 
   if (!open) return null;
 
+  // Git 标签页是否处于预览状态
+  const isGitPreviewed = activeTab === 'git' && gitPhase === 'previewed';
+
   return (
     <>
       <div className="fixed inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-2 sm:p-4 animate-in fade-in duration-200">
@@ -320,6 +377,17 @@ function AddSkillModal({ open, onClose, tools, syncTargets, onSyncTargetChange, 
                   <ArrowLeft size={18} className="text-[hsl(var(--muted-foreground))]" />
                 </button>
               )}
+              {isGitPreviewed && (
+                <button
+                  onClick={() => {
+                    resetGitState();
+                    setError(null);
+                  }}
+                  className="p-1.5 hover:bg-[hsl(var(--muted))] rounded-lg transition-colors"
+                >
+                  <ArrowLeft size={18} className="text-[hsl(var(--muted-foreground))]" />
+                </button>
+              )}
               <div className="min-w-0">
                 <h2 className="text-base sm:text-lg font-semibold truncate">
                   {detailSkill ? '技能详情' : '添加技能'}
@@ -329,6 +397,8 @@ function AddSkillModal({ open, onClose, tools, syncTargets, onSyncTargetChange, 
                     ? '浏览和搜索在线技能'
                     : activeTab === 'online' && detailSkill
                     ? detailSkill.name
+                    : isGitPreviewed
+                    ? '确认技能信息后添加'
                     : '从 Git 仓库、本地文件夹添加'}
                 </p>
               </div>
@@ -417,45 +487,49 @@ function AddSkillModal({ open, onClose, tools, syncTargets, onSyncTargetChange, 
               </div>
             ) : (
               <>
-                {/* 标签页 */}
-                <div className="flex rounded-lg bg-[hsl(var(--muted))] p-1">
-                  <button
-                    onClick={() => handleTabChange('git')}
-                    className={`flex-1 py-2.5 px-4 text-sm font-medium rounded-md transition-all flex items-center justify-center gap-2 ${
-                      activeTab === 'git'
-                        ? 'bg-[hsl(var(--card))] text-[hsl(var(--foreground))] shadow-sm'
-                        : 'text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]'
-                    }`}
-                  >
-                    <GitBranch size={14} />
-                    <span>Git 仓库</span>
-                  </button>
-                  <button
-                    onClick={() => handleTabChange('local')}
-                    className={`flex-1 py-2.5 px-4 text-sm font-medium rounded-md transition-all flex items-center justify-center gap-2 ${
-                      activeTab === 'local'
-                        ? 'bg-[hsl(var(--card))] text-[hsl(var(--foreground))] shadow-sm'
-                        : 'text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]'
-                    }`}
-                  >
-                    <Folder size={14} />
-                    <span>本地文件夹</span>
-                  </button>
-                  <button
-                    onClick={() => handleTabChange('online')}
-                    className={`flex-1 py-2.5 px-4 text-sm font-medium rounded-md transition-all flex items-center justify-center gap-2 ${
-                      activeTab === 'online'
-                        ? 'bg-[hsl(var(--card))] text-[hsl(var(--foreground))] shadow-sm'
-                        : 'text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]'
-                    }`}
-                  >
-                    <Globe size={14} />
-                    <span>在线搜索</span>
-                  </button>
-                </div>
+                {/* 标签页 - 预览状态时隐藏 */}
+                {!isGitPreviewed && (
+                  <div className="flex rounded-lg bg-[hsl(var(--muted))] p-1">
+                    <button
+                      onClick={() => handleTabChange('git')}
+                      className={`flex-1 py-2.5 px-4 text-sm font-medium rounded-md transition-all flex items-center justify-center gap-2 ${
+                        activeTab === 'git'
+                          ? 'bg-[hsl(var(--card))] text-[hsl(var(--foreground))] shadow-sm'
+                          : 'text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]'
+                      }`}
+                    >
+                      <GitBranch size={14} />
+                      <span>Git 仓库</span>
+                    </button>
+                    <button
+                      onClick={() => handleTabChange('local')}
+                      className={`flex-1 py-2.5 px-4 text-sm font-medium rounded-md transition-all flex items-center justify-center gap-2 ${
+                        activeTab === 'local'
+                          ? 'bg-[hsl(var(--card))] text-[hsl(var(--foreground))] shadow-sm'
+                          : 'text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]'
+                      }`}
+                    >
+                      <Folder size={14} />
+                      <span>本地文件夹</span>
+                    </button>
+                    <button
+                      onClick={() => handleTabChange('online')}
+                      className={`flex-1 py-2.5 px-4 text-sm font-medium rounded-md transition-all flex items-center justify-center gap-2 ${
+                        activeTab === 'online'
+                          ? 'bg-[hsl(var(--card))] text-[hsl(var(--foreground))] shadow-sm'
+                          : 'text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]'
+                      }`}
+                    >
+                      <Globe size={14} />
+                      <span>在线搜索</span>
+                    </button>
+                  </div>
+                )}
 
+                {/* ===== Git 标签页 ===== */}
                 {activeTab === 'git' && (
                   <div className="space-y-4">
+                    {/* Git 仓库 URL */}
                     <div>
                       <label className="text-sm font-medium flex items-center gap-2 mb-2">
                         Git 仓库 URL
@@ -466,102 +540,220 @@ function AddSkillModal({ open, onClose, tools, syncTargets, onSyncTargetChange, 
                           value={gitUrl}
                           onChange={(e) => {
                             setGitUrl(e.target.value);
-                            // Reset candidates when URL changes
-                            if (selectedGitCandidates.length > 0 || gitCandidates.length > 0) {
-                              setGitCandidates([]);
-                              setSelectedGitCandidates([]);
-                              setGitScanError(null);
+                            // URL 变化时重置预览状态
+                            if (gitPhase === 'previewed') {
+                              resetGitState();
                             }
                           }}
                           placeholder="例如: https://github.com/username/repo.git"
-                          className="flex-1 px-3 sm:px-4 py-3 bg-[hsl(var(--muted))] border border-[hsl(var(--border))] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--ring))] focus:border-transparent transition-all"
-                          disabled={loading || gitScanLoading}
+                          className="flex-1 px-3 sm:px-4 py-3 bg-[hsl(var(--muted))] border border-[hsl(var(--border))] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--ring))] focus:border-transparent transition-all disabled:opacity-60 disabled:cursor-not-allowed"
+                          disabled={loading || gitScanLoading || gitPhase === 'previewed'}
                         />
-                        <button
-                          onClick={handleScanGitRepo}
-                          disabled={loading || gitScanLoading || !gitUrl.trim()}
-                          className="px-4 py-3 rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--secondary))] hover:brightness-[0.95] text-sm font-medium transition-all whitespace-nowrap flex items-center gap-2 disabled:opacity-50"
-                        >
-                          {gitScanLoading ? (
-                            <Loader2 size={14} className="animate-spin" />
-                          ) : (
-                            <Eye size={14} />
-                          )}
-                          预览
-                        </button>
+                        {gitPhase === 'previewed' && (
+                          <button
+                            onClick={() => {
+                              resetGitState();
+                              setError(null);
+                            }}
+                            className="px-4 py-3 rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--secondary))] hover:brightness-[0.95] text-sm font-medium transition-all whitespace-nowrap flex items-center gap-2"
+                          >
+                            <RotateCcw size={14} />
+                            重选
+                          </button>
+                        )}
                       </div>
                     </div>
 
-                    {/* 扫描结果 */}
+                    {/* 扫描错误 */}
                     {gitScanError && (
                       <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-500 text-sm">
                         {gitScanError}
                       </div>
                     )}
 
-                    {/* 已选中的候选技能 */}
-                    {selectedGitCandidates.length > 0 && (
-                      <div className="space-y-2">
-                        <div className="flex items-center gap-2">
-                          <Check size={14} className="text-[hsl(var(--primary))]" />
-                          <span className="text-xs font-medium text-[hsl(var(--primary))]">
-                            已选择 {selectedGitCandidates.length} 个技能
-                          </span>
+                    {/* ===== 预览后：单个技能 ===== */}
+                    {gitPhase === 'previewed' && selectedGitCandidates.length === 1 && (
+                      <>
+                        <div>
+                          <label className="text-sm font-medium mb-2 flex items-center gap-2">
+                            技能名称 <span className="text-[hsl(var(--muted-foreground))] font-normal">(可选)</span>
+                          </label>
+                          <input
+                            type="text"
+                            value={gitName}
+                            onChange={(e) => setGitName(e.target.value)}
+                            placeholder="留空则使用仓库名称"
+                            className="w-full px-3 sm:px-4 py-3 bg-[hsl(var(--muted))] border border-[hsl(var(--border))] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--ring))] focus:border-transparent transition-all"
+                            disabled={loading}
+                          />
                         </div>
-                        <div className="flex flex-wrap gap-2">
+
+                        {/* 同步到工具 */}
+                        <div className="rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--muted))/30] p-3 sm:p-5 space-y-3">
+                          <div className="flex items-center justify-between">
+                            <label className="text-sm font-medium">同步到工具</label>
+                            {tools.length > 0 && (
+                              <button
+                                type="button"
+                                onClick={toggleAllTools}
+                                className="text-xs text-[hsl(var(--primary))] hover:underline flex-shrink-0"
+                              >
+                                {tools.every(t => syncTargets[t.id]) ? '取消全选' : '全选'}
+                              </button>
+                            )}
+                          </div>
+                          {tools.length > 0 ? (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                              {tools.map(tool => {
+                                const enabled = syncTargets[tool.id] ?? false;
+                                return (
+                                  <button
+                                    key={tool.id}
+                                    type="button"
+                                    onClick={() => toggleTool(tool.id)}
+                                    className={`flex items-center gap-3 px-3 py-2.5 rounded-lg border transition-all text-left ${
+                                      enabled
+                                        ? "border-[hsl(var(--primary))] bg-[hsl(var(--primary))/5]"
+                                        : "border-[hsl(var(--border))] bg-[hsl(var(--card))] hover:border-[hsl(var(--ring))]"
+                                    }`}
+                                    disabled={loading}
+                                  >
+                                    <div
+                                      className={`w-4 h-4 rounded flex items-center justify-center flex-shrink-0 transition-colors ${
+                                        enabled
+                                          ? APP_COLORS[tool.id as keyof typeof APP_COLORS] || "bg-[hsl(var(--foreground))]"
+                                          : "bg-[hsl(var(--muted))] border border-[hsl(var(--border))]"
+                                      }`}
+                                    >
+                                      {enabled && <Check size={12} className="text-white" />}
+                                    </div>
+                                    <span className="text-sm">{tool.label}</span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          ) : (
+                            <p className="text-sm text-[hsl(var(--muted-foreground))]">
+                              未检测到已安装的 AI 工具。
+                            </p>
+                          )}
+                        </div>
+                      </>
+                    )}
+
+                    {/* ===== 预览后：多个技能 ===== */}
+                    {gitPhase === 'previewed' && selectedGitCandidates.length > 1 && (
+                      <>
+                        <div className="space-y-3">
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-2">
+                              <Check size={14} className="text-[hsl(var(--primary))]" />
+                              <span className="text-xs font-medium text-[hsl(var(--primary))]">
+                                已选择 {selectedGitCandidates.length} 个技能
+                              </span>
+                            </div>
+                            <button
+                              onClick={() => setShowGitPickModal(true)}
+                              className="text-xs text-[hsl(var(--primary))] hover:underline"
+                            >
+                              重新选择
+                            </button>
+                          </div>
                           {selectedGitCandidates.map((candidate) => (
                             <div
                               key={candidate.subpath}
-                              className="group relative flex items-center gap-2 px-3 py-2 rounded-lg border border-[hsl(var(--primary))]/30 bg-[hsl(var(--primary))/5] pr-8"
+                              className="p-3 rounded-lg border border-[hsl(var(--primary))]/30 bg-[hsl(var(--primary))/5] space-y-2"
                             >
-                              <GitBranch size={12} className="text-[hsl(var(--primary))] flex-shrink-0" />
-                              <div className="min-w-0">
-                                <span className="text-sm font-medium">{candidate.name}</span>
-                                {candidate.description && (
-                                  <span className="text-xs text-[hsl(var(--muted-foreground))] ml-2">
-                                    {candidate.description}
-                                  </span>
-                                )}
+                              <div className="flex items-center justify-between">
+                                <div className="flex items-center gap-2 min-w-0">
+                                  <GitBranch size={12} className="text-[hsl(var(--primary))] flex-shrink-0" />
+                                  <span className="text-sm font-medium truncate">{candidate.name}</span>
+                                </div>
+                                <span className="text-xs text-[hsl(var(--muted-foreground))] font-mono flex-shrink-0 ml-2">
+                                  {candidate.subpath}
+                                </span>
                               </div>
-                              <span className="text-xs text-[hsl(var(--muted-foreground))] font-mono flex-shrink-0">
-                                {candidate.subpath}
-                              </span>
-                              <button
-                                onClick={() => handleGitCandidateToggle(candidate)}
-                                className="absolute top-1 right-1 p-0.5 rounded hover:bg-[hsl(var(--muted))] transition-colors"
-                              >
-                                <X size={12} className="text-[hsl(var(--muted-foreground))]" />
-                              </button>
+                              {candidate.description && (
+                                <p className="text-xs text-[hsl(var(--muted-foreground))]">{candidate.description}</p>
+                              )}
+                              <div>
+                                <label className="text-sm font-medium mb-1.5 block">
+                                  技能名称 <span className="text-[hsl(var(--muted-foreground))] font-normal text-xs">(可选，留空使用默认)</span>
+                                </label>
+                                <input
+                                  type="text"
+                                  value={gitSkillNames[candidate.subpath] ?? candidate.name}
+                                  onChange={(e) =>
+                                    setGitSkillNames(prev => ({
+                                      ...prev,
+                                      [candidate.subpath]: e.target.value,
+                                    }))
+                                  }
+                                  placeholder={candidate.name}
+                                  className="w-full px-3 py-2 bg-[hsl(var(--card))] border border-[hsl(var(--border))] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--ring))] focus:border-transparent transition-all"
+                                  disabled={loading}
+                                />
+                              </div>
                             </div>
                           ))}
                         </div>
-                        {gitCandidates.length > 1 && (
-                          <button
-                            onClick={() => setShowGitPickModal(true)}
-                            className="text-xs text-[hsl(var(--primary))] hover:underline"
-                          >
-                            继续添加
-                          </button>
-                        )}
-                      </div>
-                    )}
 
-                    <div>
-                      <label className="text-sm font-medium mb-2 flex items-center gap-2">
-                        技能名称 <span className="text-[hsl(var(--muted-foreground))] font-normal">(可选)</span>
-                      </label>
-                      <input
-                        type="text"
-                        value={gitName}
-                        onChange={(e) => setGitName(e.target.value)}
-                        placeholder="留空则使用仓库名称"
-                        className="w-full px-3 sm:px-4 py-3 bg-[hsl(var(--muted))] border border-[hsl(var(--border))] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--ring))] focus:border-transparent transition-all"
-                        disabled={loading}
-                      />
-                    </div>
+                        {/* 同步到工具 */}
+                        <div className="rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--muted))/30] p-3 sm:p-5 space-y-3">
+                          <div className="flex items-center justify-between">
+                            <label className="text-sm font-medium">同步到工具</label>
+                            {tools.length > 0 && (
+                              <button
+                                type="button"
+                                onClick={toggleAllTools}
+                                className="text-xs text-[hsl(var(--primary))] hover:underline flex-shrink-0"
+                              >
+                                {tools.every(t => syncTargets[t.id]) ? '取消全选' : '全选'}
+                              </button>
+                            )}
+                          </div>
+                          {tools.length > 0 ? (
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                              {tools.map(tool => {
+                                const enabled = syncTargets[tool.id] ?? false;
+                                return (
+                                  <button
+                                    key={tool.id}
+                                    type="button"
+                                    onClick={() => toggleTool(tool.id)}
+                                    className={`flex items-center gap-3 px-3 py-2.5 rounded-lg border transition-all text-left ${
+                                      enabled
+                                        ? "border-[hsl(var(--primary))] bg-[hsl(var(--primary))/5]"
+                                        : "border-[hsl(var(--border))] bg-[hsl(var(--card))] hover:border-[hsl(var(--ring))]"
+                                    }`}
+                                    disabled={loading}
+                                  >
+                                    <div
+                                      className={`w-4 h-4 rounded flex items-center justify-center flex-shrink-0 transition-colors ${
+                                        enabled
+                                          ? APP_COLORS[tool.id as keyof typeof APP_COLORS] || "bg-[hsl(var(--foreground))]"
+                                          : "bg-[hsl(var(--muted))] border border-[hsl(var(--border))]"
+                                      }`}
+                                    >
+                                      {enabled && <Check size={12} className="text-white" />}
+                                    </div>
+                                    <span className="text-sm">{tool.label}</span>
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          ) : (
+                            <p className="text-sm text-[hsl(var(--muted-foreground))]">
+                              未检测到已安装的 AI 工具。
+                            </p>
+                          )}
+                        </div>
+                      </>
+                    )}
                   </div>
                 )}
 
+                {/* ===== 本地文件夹标签页 ===== */}
                 {activeTab === 'local' && (
                   <div className="space-y-4">
                     <div>
@@ -572,7 +764,10 @@ function AddSkillModal({ open, onClose, tools, syncTargets, onSyncTargetChange, 
                         <input
                           type="text"
                           value={localPath}
-                          onChange={(e) => setLocalPath(e.target.value)}
+                          onChange={(e) => {
+                            setLocalPath(e.target.value);
+                            validateLocalPath(e.target.value);
+                          }}
                           placeholder="选择或输入文件夹路径"
                           className="flex-1 px-3 sm:px-4 py-3 bg-[hsl(var(--muted))] border border-[hsl(var(--border))] rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-[hsl(var(--ring))] focus:border-transparent transition-all"
                           disabled={loading}
@@ -586,6 +781,11 @@ function AddSkillModal({ open, onClose, tools, syncTargets, onSyncTargetChange, 
                         </button>
                       </div>
                     </div>
+                    {localValidationError && (
+                      <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/20 text-red-500 text-sm">
+                        {localValidationError}
+                      </div>
+                    )}
                     <div>
                       <label className="text-sm font-medium mb-2 flex items-center gap-2">
                         技能名称 <span className="text-[hsl(var(--muted-foreground))] font-normal">(可选)</span>
@@ -602,6 +802,7 @@ function AddSkillModal({ open, onClose, tools, syncTargets, onSyncTargetChange, 
                   </div>
                 )}
 
+                {/* ===== 在线搜索标签页 ===== */}
                 {activeTab === 'online' && (
                   <div className="space-y-4">
                     <div>
@@ -718,8 +919,8 @@ function AddSkillModal({ open, onClose, tools, syncTargets, onSyncTargetChange, 
                   </div>
                 )}
 
-                {/* 同步目标 - 仅 Git 和本地标签页显示 */}
-                {activeTab !== 'online' && (
+                {/* 同步目标 - 仅本地标签页显示（Git 标签页在预览状态中单独显示） */}
+                {activeTab === 'local' && (
                   <div className="rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--muted))/30] p-3 sm:p-5 space-y-3">
                     <div className="flex items-center justify-between">
                       <label className="text-sm font-medium">同步到工具</label>
@@ -787,15 +988,20 @@ function AddSkillModal({ open, onClose, tools, syncTargets, onSyncTargetChange, 
               <button
                 onClick={activeTab === 'online' ? () => {} : activeTab === 'git' ? handleCreateGit : handleCreateLocal}
                 disabled={
-                  loading ||
+                  loading || gitScanLoading ||
                   activeTab === 'online' ||
                   (activeTab === 'git' && !gitUrl.trim()) ||
-                  (activeTab === 'local' && !localPath.trim())
+                  (activeTab === 'local' && (!localPath.trim() || !localValid))
                 }
                 className="px-4 sm:px-5 py-2 sm:py-2.5 bg-[hsl(var(--primary))] hover:brightness-[0.9] active:brightness-[0.85] text-white rounded-lg text-sm font-medium transition-all shadow-sm disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
               >
-                {loading ? (
+                {(loading || gitScanLoading) ? (
                   <Loader2 size={16} className="animate-spin" />
+                ) : activeTab === 'git' && gitPhase === 'input' ? (
+                  <>
+                    <Eye size={14} />
+                    预览仓库
+                  </>
                 ) : activeTab === 'online' ? (
                   <>
                     <Search size={14} />

@@ -169,6 +169,23 @@ Database (SQLite) + Config File Sync
 | `get_tool_info` | 获取指定工具的安装信息 |
 | `install_tool` | 安装工具 |
 | `update_tool` | 更新工具 |
+| `get_managed_skills` | 获取所有管理中的技能 |
+| `get_tool_status` | 获取所有工具的安装状态和技能列表 |
+| `get_onboarding_plan` | 生成导入计划（从已安装工具扫描技能） |
+| `install_git` | 从 Git URL 安装技能（单一技能） |
+| `list_git_skills` | 列出 Git 仓库中的所有技能候选 |
+| `install_git_selection` | 安装 Git 仓库中指定的子路径技能 |
+| `install_local_selection` | 从本地文件夹安装技能 |
+| `validate_local_skill` | 验证本地文件夹是否为合规的技能目录 |
+| `sync_skill_to_tool` | 将技能同步到指定工具 |
+| `unsync_skill_from_tool` | 从指定工具取消同步 |
+| `import_existing_skill` | 导入现有技能到 central repo |
+| `delete_managed_skill` | 删除技能（central repo + 所有工具目录） |
+| `update_skill` | 更新 Git 技能（重新拉取） |
+| `rename_skill` | 重命名技能（central repo + 所有工具 + 数据库） |
+| `get_skill_readme` | 读取技能的 SKILL.md 内容 |
+| `search_skills_online` | 在线搜索技能（skills.sh API） |
+| `get_featured_skills` | 获取热门技能列表 |
 
 ## 版本管理
 

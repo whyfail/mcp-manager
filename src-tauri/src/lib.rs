@@ -148,6 +148,7 @@ pub fn run() {
             commands::skills::get_skill_readme,
             commands::skills::search_skills_online,
             commands::skills::get_featured_skills,
+            commands::skills::validate_local_skill,
             // 更新命令
             commands::update::check_update,
             commands::update::install_update,
