@@ -39,10 +39,7 @@ AI Toolkit is a **universal AI programming tools management tool** that supports
 - **Atomic Writing**: Temporary file + rename mechanism to prevent configuration corruption
 
 ### 🚀 Quick Agent Launch
-- **One-Click Launch**: Start AI tools directly from the app
-- **Multi-Terminal Support**: Terminal, iTerm2, Warp, Hyper, Kitty, Alacritty, Fig, Kaku
-- **Auto Node.js Detection**: Supports nvm, fnm, volta, nvmd and other version managers
-- **Windows Terminal Support**: Windows Terminal, PowerShell, CMD, Git Bash
+- **One-Click Launch**: Start AI tools directly from the default terminal
 
 ### 📦 Tool Management
 - **Installation Wizard**: Shows multiple installation methods (Homebrew, npm, curl scripts)
