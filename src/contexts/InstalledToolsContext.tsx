@@ -1,5 +1,6 @@
 import { createContext, useContext, useState, useEffect, useCallback, ReactNode } from "react";
 import { invoke } from "@tauri-apps/api/core";
+import { listen, UnlistenFn } from "@tauri-apps/api/event";
 import { toast } from "sonner";
 import type { ToolId } from "@/lib/tools";
 
@@ -90,6 +91,24 @@ export function InstalledToolsProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     loadReport();
   }, [loadReport]);
+
+  useEffect(() => {
+    let unlisten: UnlistenFn | undefined;
+    const setupListener = async () => {
+      unlisten = await listen<InstalledToolsReport>("installed-tools-updated", (event) => {
+        setReport(event.payload);
+        setIsLoading(false);
+      });
+    };
+
+    setupListener().catch((err) => {
+      console.error("Failed to listen installed-tools-updated:", err);
+    });
+
+    return () => {
+      unlisten?.();
+    };
+  }, []);
 
   // 便捷访问
   const installedAgents = report?.agents.filter((a) => a.exists) || [];

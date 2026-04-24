@@ -1,8 +1,8 @@
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
-use tauri::State;
-use std::process::{Command, Stdio};
 use std::io::Write;
+use std::process::{Command, Stdio};
+use tauri::State;
 
 use crate::app_state::AppState;
 use crate::database::McpServer;
@@ -67,7 +67,9 @@ pub struct TestConnectionParams {
 }
 
 #[tauri::command]
-pub async fn test_mcp_connection(params: TestConnectionParams) -> Result<TestConnectionResult, String> {
+pub async fn test_mcp_connection(
+    params: TestConnectionParams,
+) -> Result<TestConnectionResult, String> {
     let command = params.command.clone();
     let args = params.args.clone();
     let env = params.env.clone().unwrap_or_default();
@@ -83,7 +85,8 @@ pub async fn test_mcp_connection(params: TestConnectionParams) -> Result<TestCon
             .envs(&env)
             .env("PATH", std::env::var("PATH").unwrap_or_default());
 
-        let mut child = cmd.spawn()
+        let mut child = cmd
+            .spawn()
             .map_err(|e| format!("无法启动命令 '{}': {}", command, e))?;
 
         // 发送 MCP 初始化请求
@@ -94,25 +97,26 @@ pub async fn test_mcp_connection(params: TestConnectionParams) -> Result<TestCon
             "params": {
                 "protocolVersion": "2024-11-05",
                 "capabilities": {},
-                "clientInfo": { "name": "ai-toolkit", "version": "1.3.0" }
+                "clientInfo": { "name": "ai-toolkit", "version": "1.3.1" }
             }
         });
 
         let request_str = format!("{}\n", serde_json::to_string(&init_request).unwrap());
-        
+
         if let Some(ref mut stdin) = child.stdin {
-            stdin.write_all(request_str.as_bytes())
+            stdin
+                .write_all(request_str.as_bytes())
                 .map_err(|e| format!("写入 stdin 失败: {}", e))?;
         }
 
         // 尝试读取一行响应（超时 5s 由 wait_with_output 内部处理其实不太对，我们这里用 wait_timeout）
         // 由于标准库没有 wait_timeout，我们简单等待一下然后 kill，或者直接 try_recv
-        
+
         // 简化版：等待进程退出或读取 stderr/stdout
         // 很多 MCP server 启动后不会立刻退出，所以这里我们检查是否成功启动并能接收输入
-        
+
         std::thread::sleep(std::time::Duration::from_secs(2));
-        
+
         // 检查进程是否还在运行
         match child.try_wait() {
             Ok(Some(status)) => {
@@ -120,16 +124,22 @@ pub async fn test_mcp_connection(params: TestConnectionParams) -> Result<TestCon
                 let output = child.wait_with_output().unwrap();
                 let stderr = String::from_utf8_lossy(&output.stderr);
                 let stdout = String::from_utf8_lossy(&output.stdout);
-                
+
                 if status.success() || stdout.contains("result") || !stdout.is_empty() {
                     Ok(TestConnectionResult {
                         success: true,
-                        message: format!("连接成功。输出: {}", stdout.chars().take(150).collect::<String>()),
+                        message: format!(
+                            "连接成功。输出: {}",
+                            stdout.chars().take(150).collect::<String>()
+                        ),
                     })
                 } else {
                     Ok(TestConnectionResult {
                         success: false,
-                        message: format!("进程异常退出: {}", stderr.chars().take(200).collect::<String>()),
+                        message: format!(
+                            "进程异常退出: {}",
+                            stderr.chars().take(200).collect::<String>()
+                        ),
                     })
                 }
             }
@@ -141,12 +151,12 @@ pub async fn test_mcp_connection(params: TestConnectionParams) -> Result<TestCon
                     message: "连接成功！服务器正在运行。".to_string(),
                 })
             }
-            Err(e) => {
-                Ok(TestConnectionResult {
-                    success: false,
-                    message: format!("检查状态失败: {}", e),
-                })
-            }
+            Err(e) => Ok(TestConnectionResult {
+                success: false,
+                message: format!("检查状态失败: {}", e),
+            }),
         }
-    }).await.map_err(|e| format!("Task failed: {}", e))?
+    })
+    .await
+    .map_err(|e| format!("Task failed: {}", e))?
 }

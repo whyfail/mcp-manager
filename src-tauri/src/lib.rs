@@ -15,8 +15,8 @@ pub mod utils;
 use agents::{get_last_detected_agents, save_detected_agents};
 use app_state::AppState;
 use database::Database;
-use tauri::{Emitter, Manager, async_runtime::spawn};
 use std::time::Duration;
+use tauri::{async_runtime::spawn, Emitter, Manager};
 use tool_detection::detect_all_tools;
 
 /// 从用户的 shell 环境中获取完整 PATH 并扩展到当前进程环境中。
@@ -85,12 +85,14 @@ pub fn run() {
                     Ok(report) => {
                         // 检测新安装的工具
                         let previous = get_last_detected_agents();
-                        let current_names: Vec<String> = report.agents
+                        let current_names: Vec<String> = report
+                            .agents
                             .iter()
                             .filter(|a| a.exists)
                             .map(|a| a.id.clone())
                             .collect();
-                        let new_agents: Vec<_> = report.agents
+                        let new_agents: Vec<_> = report
+                            .agents
                             .iter()
                             .filter(|a| a.exists && !previous.contains(&a.id))
                             .cloned()
@@ -105,6 +107,8 @@ pub fn run() {
                                 *cache = report.clone();
                             }
                         }
+
+                        let _ = app_handle.emit("installed-tools-updated", &report);
 
                         // 如果有新工具，通过事件通知前端
                         if !new_agents.is_empty() {
@@ -129,7 +133,9 @@ pub fn run() {
             commands::mcp::test_mcp_connection,
             // 应用配置命令
             commands::app::get_app_configs,
+            commands::app::get_launch_preferences,
             commands::app::import_mcp_from_app,
+            commands::app::set_default_terminal,
             // Agent 检测命令
             commands::agents::detect_agents,
             commands::agents::sync_agent_mcp,

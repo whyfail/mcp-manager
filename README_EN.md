@@ -2,7 +2,7 @@
 
 <div align="center">
 
-[![Version](https://img.shields.io/badge/version-1.2.4-blue.svg)](https://github.com)
+[![Version](https://img.shields.io/badge/version-1.3.1-blue.svg)](https://github.com)
 [![Platform](https://img.shields.io/badge/platform-macOS%2012%2B-lightgrey.svg)](https://github.com)
 [![Built with Tauri](https://img.shields.io/badge/built%20with-Tauri%202-orange.svg)](https://tauri.app/)
 
@@ -39,7 +39,8 @@ AI Toolkit is a **universal AI programming tools management tool** that supports
 - **Atomic Writing**: Temporary file + rename mechanism to prevent configuration corruption
 
 ### 🚀 Quick Agent Launch
-- **One-Click Launch**: Start AI tools directly from the default terminal
+- **One-Click Launch**: Start AI tools directly from a terminal
+- **Terminal Preference**: Choose the preferred launch terminal in Settings (macOS: Terminal / iTerm / Warp / Ghostty; Windows: Windows Terminal / PowerShell / Command Prompt)
 
 ### 📦 Tool Management
 - **Installation Wizard**: Shows multiple installation methods (Homebrew, npm, curl scripts)
@@ -57,7 +58,7 @@ AI Toolkit is a **universal AI programming tools management tool** that supports
 |--------|--------|-------------|
 | **macOS 12+** | ✅ Supported | Full feature support |
 | **Linux** | 🚧 In Progress | Basic functionality available |
-| **Windows 10+** | 🚧 In Progress | Path adaptation in progress |
+| **Windows 10+** | ✅ Supported | MCP, Skills, tool launching, and terminal preferences are supported |
 
 ## 🚀 Quick Start
 

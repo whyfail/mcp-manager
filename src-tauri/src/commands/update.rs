@@ -13,7 +13,9 @@ pub struct UpdateInfo {
 /// 检查更新
 #[tauri::command]
 pub async fn check_update(app: AppHandle) -> Result<UpdateInfo, String> {
-    let updater = app.updater().map_err(|e| format!("更新器初始化失败: {}", e))?;
+    let updater = app
+        .updater()
+        .map_err(|e| format!("更新器初始化失败: {}", e))?;
     match updater.check().await {
         Ok(Some(update)) => Ok(UpdateInfo {
             available: true,

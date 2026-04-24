@@ -1,8 +1,8 @@
 use std::path::{Path, PathBuf};
 
-use anyhow::{Context, Result};
 #[cfg(windows)]
 use crate::utils::SuppressConsole;
+use anyhow::{Context, Result};
 
 #[derive(Clone, Debug)]
 pub enum SyncMode {
@@ -205,7 +205,11 @@ fn is_same_link(link_path: &Path, target: &Path) -> bool {
         {
             let output = std::process::Command::new("fsutil")
                 .suppress_console()
-                .args(["reparsepoint", "query", link_path.to_string_lossy().as_ref()])
+                .args([
+                    "reparsepoint",
+                    "query",
+                    link_path.to_string_lossy().as_ref(),
+                ])
                 .output();
             if let Ok(output) = output {
                 if output.status.success() {
@@ -213,7 +217,8 @@ fn is_same_link(link_path: &Path, target: &Path) -> bool {
                     for line in stdout.lines() {
                         if line.contains("Print Name:") {
                             let target_str = line.splitn(2, ':').nth(1).unwrap_or("").trim();
-                            let target_str = target_str.trim_start_matches('"').trim_end_matches('"');
+                            let target_str =
+                                target_str.trim_start_matches('"').trim_end_matches('"');
                             let reparsed = PathBuf::from(target_str);
                             if let (Ok(reparse_norm), Ok(target_norm)) =
                                 (reparsed.canonicalize(), target.canonicalize())

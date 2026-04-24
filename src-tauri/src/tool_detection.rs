@@ -1,7 +1,7 @@
 use crate::agents::detect_all_agents;
 use crate::app_state::InstalledToolsReport;
-use crate::skill_core::tool_adapters::get_all_tool_status;
 use crate::commands::agents::AgentInfo;
+use crate::skill_core::tool_adapters::get_all_tool_status;
 use std::time::SystemTime;
 
 /// 执行统一的工具检测

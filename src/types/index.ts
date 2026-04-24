@@ -39,6 +39,17 @@ export interface AppConfigInfo {
   mcpCount: number;
 }
 
+export interface TerminalOption {
+  id: string;
+  label: string;
+  available: boolean;
+}
+
+export interface LaunchPreferences {
+  defaultTerminal: string;
+  availableTerminals: TerminalOption[];
+}
+
 // 支持的应用列表
 export const SUPPORTED_APPS: Array<{ id: string; name: string; icon: string }> = [
   { id: "qwen-code", name: "Qwen Code", icon: "code" },
@@ -51,6 +62,7 @@ export const SUPPORTED_APPS: Array<{ id: string; name: string; icon: string }> =
   { id: "trae", name: "Trae", icon: "trae" },
   { id: "trae-cn", name: "Trae CN", icon: "trae-cn" },
   { id: "trae-solo-cn", name: "TRAE SOLO CN", icon: "trae-solo-cn" },
+  { id: "codebuddy", name: "CodeBuddy", icon: "codebuddy" },
 ];
 
 // 工具安装方式

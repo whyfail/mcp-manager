@@ -38,10 +38,10 @@ impl ToolId {
             ToolId::GeminiCli => "gemini",
             ToolId::OpenCode => "opencode",
             ToolId::Qoder => "qoder",
-            ToolId::QoderCli => "qodercli",  // Qoder CLI 使用 qodercli 作为 ID
+            ToolId::QoderCli => "qodercli", // Qoder CLI 使用 qodercli 作为 ID
             ToolId::Trae => "trae",
             ToolId::TraeCn => "trae-cn",
-            ToolId::TraeSoloCn => "trae-solo-cn",  // TRAE SOLO CN 使用 traesoloCn 作为 ID
+            ToolId::TraeSoloCn => "trae-solo-cn", // TRAE SOLO CN 使用 traesoloCn 作为 ID
             ToolId::CodeBuddy => "codebuddy",
         }
     }
@@ -152,9 +152,10 @@ pub fn default_tool_adapters() -> Vec<ToolAdapter> {
 /// Tools can share the same global skills directory (e.g. Amp and Kimi Code CLI).
 /// Use this to coordinate UI warnings and avoid duplicate filesystem operations.
 pub fn adapters_sharing_skills_dir(adapter: &ToolAdapter) -> Vec<ToolAdapter> {
+    let adapter_path = resolve_default_path(adapter).ok();
     default_tool_adapters()
         .into_iter()
-        .filter(|a| a.relative_skills_dir == adapter.relative_skills_dir)
+        .filter(|a| resolve_default_path(a).ok() == adapter_path)
         .collect()
 }
 
@@ -166,11 +167,56 @@ pub fn adapter_by_key(key: &str) -> Option<ToolAdapter> {
 
 pub fn resolve_default_path(adapter: &ToolAdapter) -> Result<PathBuf> {
     let home = dirs::home_dir().context("failed to resolve home directory")?;
+    #[cfg(windows)]
+    {
+        let appdata = std::env::var("APPDATA").ok().map(PathBuf::from);
+        let local_appdata = std::env::var("LOCALAPPDATA").ok().map(PathBuf::from);
+        let path = match adapter.id {
+            ToolId::OpenCode => home.join(".config").join("opencode").join("skills"),
+            ToolId::Qoder | ToolId::QoderCli => local_appdata
+                .unwrap_or_else(|| home.join("AppData").join("Local"))
+                .join("Qoder")
+                .join("skills"),
+            ToolId::Trae => appdata
+                .unwrap_or_else(|| home.join("AppData").join("Roaming"))
+                .join("Trae")
+                .join("skills"),
+            ToolId::TraeCn | ToolId::TraeSoloCn => appdata
+                .unwrap_or_else(|| home.join("AppData").join("Roaming"))
+                .join("Trae CN")
+                .join("skills"),
+            _ => home.join(adapter.relative_skills_dir),
+        };
+        return Ok(path);
+    }
+
+    #[cfg(not(windows))]
     Ok(home.join(adapter.relative_skills_dir))
 }
 
 pub fn resolve_detect_path(adapter: &ToolAdapter) -> Result<PathBuf> {
     let home = dirs::home_dir().context("failed to resolve home directory")?;
+    #[cfg(windows)]
+    {
+        let appdata = std::env::var("APPDATA").ok().map(PathBuf::from);
+        let local_appdata = std::env::var("LOCALAPPDATA").ok().map(PathBuf::from);
+        let path = match adapter.id {
+            ToolId::OpenCode => home.join(".config").join("opencode"),
+            ToolId::Qoder | ToolId::QoderCli => local_appdata
+                .unwrap_or_else(|| home.join("AppData").join("Local"))
+                .join("Qoder"),
+            ToolId::Trae => appdata
+                .unwrap_or_else(|| home.join("AppData").join("Roaming"))
+                .join("Trae"),
+            ToolId::TraeCn | ToolId::TraeSoloCn => appdata
+                .unwrap_or_else(|| home.join("AppData").join("Roaming"))
+                .join("Trae CN"),
+            _ => home.join(adapter.relative_detect_dir),
+        };
+        return Ok(path);
+    }
+
+    #[cfg(not(windows))]
     Ok(home.join(adapter.relative_detect_dir))
 }
 
@@ -203,6 +249,12 @@ pub fn is_tool_installed(adapter: &ToolAdapter) -> bool {
     // 先尝试 binary 检测
     if is_tool_installed_by_binary(&adapter.id) {
         return true;
+    }
+
+    if let Ok(path) = resolve_detect_path(adapter) {
+        if path.exists() {
+            return true;
+        }
     }
 
     // Mac GUI 应用检测（通过检查 /Applications/*.app）

@@ -1,15 +1,25 @@
+use crate::app_state::AppState;
+use crate::core::central_repo::resolve_central_repo_path;
+use crate::core::featured_skills::{
+    fetch_featured_skills as fetch_featured_skills_core, FeaturedSkill,
+};
+use crate::core::installer::{
+    install_git_skill, install_git_skill_from_selection, scan_git_skill_candidates,
+    GitSkillCandidate,
+};
+use crate::core::skills_search::{
+    search_skills_online as search_skills_online_core, OnlineSkillResult,
+};
+use crate::database::SkillRecord;
+use crate::skill_core::tool_adapters::{
+    adapter_by_key, default_tool_adapters, get_all_tool_status, is_tool_installed,
+    resolve_default_path, scan_tool_dir, ToolStatus,
+};
+#[cfg(windows)]
+use crate::utils::SuppressConsole;
 use serde::Serialize;
 use std::path::{Path, PathBuf};
 use tauri::State;
-use crate::core::installer::{install_git_skill, install_git_skill_from_selection, scan_git_skill_candidates, GitSkillCandidate};
-use crate::core::central_repo::resolve_central_repo_path;
-use crate::core::featured_skills::{fetch_featured_skills as fetch_featured_skills_core, FeaturedSkill};
-use crate::core::skills_search::{search_skills_online as search_skills_online_core, OnlineSkillResult};
-use crate::skill_core::tool_adapters::{get_all_tool_status, default_tool_adapters, resolve_default_path, scan_tool_dir, is_tool_installed, ToolStatus, adapter_by_key};
-use crate::database::SkillRecord;
-use crate::app_state::AppState;
-#[cfg(windows)]
-use crate::utils::SuppressConsole;
 
 // Skills management commands
 // Migrated from skills-hub-main
@@ -120,10 +130,8 @@ pub async fn get_managed_skills(state: State<'_, AppState>) -> Result<Vec<Manage
 
     // 从数据库读取技能元数据
     let db_skills = state.db.get_all_skills().map_err(|e| e.to_string())?;
-    let db_skills_map: std::collections::HashMap<String, SkillRecord> = db_skills
-        .into_iter()
-        .map(|s| (s.name.clone(), s))
-        .collect();
+    let db_skills_map: std::collections::HashMap<String, SkillRecord> =
+        db_skills.into_iter().map(|s| (s.name.clone(), s)).collect();
 
     // 首先从 central repo 扫描所有技能
     let central_dir = resolve_central_repo_path().map_err(|e| e.to_string())?;
@@ -195,28 +203,35 @@ pub async fn get_managed_skills(state: State<'_, AppState>) -> Result<Vec<Manage
         }
 
         // 从数据库获取技能元数据
-        let (skill_id, source_type, source_ref, source_subpath, created_at, updated_at, last_sync_at) =
-            if let Some(db_skill) = db_skills_map.get(&skill_name) {
-                (
-                    db_skill.id.clone(),
-                    db_skill.source_type.clone(),
-                    db_skill.source_ref.clone(),
-                    db_skill.source_subpath.clone(),
-                    db_skill.created_at,
-                    db_skill.updated_at,
-                    db_skill.last_sync_at,
-                )
-            } else {
-                (
-                    format!("local-{}", skill_name),
-                    "local".to_string(),
-                    Some(central_path.to_string_lossy().to_string()),
-                    None,
-                    now,
-                    now,
-                    None,
-                )
-            };
+        let (
+            skill_id,
+            source_type,
+            source_ref,
+            source_subpath,
+            created_at,
+            updated_at,
+            last_sync_at,
+        ) = if let Some(db_skill) = db_skills_map.get(&skill_name) {
+            (
+                db_skill.id.clone(),
+                db_skill.source_type.clone(),
+                db_skill.source_ref.clone(),
+                db_skill.source_subpath.clone(),
+                db_skill.created_at,
+                db_skill.updated_at,
+                db_skill.last_sync_at,
+            )
+        } else {
+            (
+                format!("local-{}", skill_name),
+                "local".to_string(),
+                Some(central_path.to_string_lossy().to_string()),
+                None,
+                now,
+                now,
+                None,
+            )
+        };
 
         result.push(ManagedSkill {
             id: skill_id,
@@ -239,14 +254,14 @@ pub async fn get_managed_skills(state: State<'_, AppState>) -> Result<Vec<Manage
 
 #[tauri::command]
 pub async fn get_tool_status() -> Result<Vec<ToolStatus>, String> {
-    get_all_tool_status()
-        .map_err(|e| e.to_string())
+    get_all_tool_status().map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 pub async fn get_onboarding_plan() -> Result<OnboardingPlan, String> {
     let all_tools = default_tool_adapters();
-    let mut groups_map: std::collections::HashMap<String, OnboardingGroup> = std::collections::HashMap::new();
+    let mut groups_map: std::collections::HashMap<String, OnboardingGroup> =
+        std::collections::HashMap::new();
     let mut total_skills = 0;
     let mut total_tools = 0;
 
@@ -273,11 +288,13 @@ pub async fn get_onboarding_plan() -> Result<OnboardingPlan, String> {
                 link_target: skill.link_target.map(|p| p.to_string_lossy().to_string()),
             };
 
-            let entry = groups_map.entry(skill.name.clone()).or_insert_with(|| OnboardingGroup {
-                name: skill.name.clone(),
-                variants: vec![],
-                has_conflict: false,
-            });
+            let entry = groups_map
+                .entry(skill.name.clone())
+                .or_insert_with(|| OnboardingGroup {
+                    name: skill.name.clone(),
+                    variants: vec![],
+                    has_conflict: false,
+                });
             entry.variants.push(variant);
         }
     }
@@ -307,11 +324,10 @@ pub async fn install_git(
     let repo_url_clone = repo_url.clone();
     let name_clone = name.clone();
 
-    let inner_result = tokio::task::spawn_blocking(move || {
-        install_git_skill(&repo_url_clone, name_clone, None)
-    })
-    .await
-    .map_err(|e| e.to_string())?;
+    let inner_result =
+        tokio::task::spawn_blocking(move || install_git_skill(&repo_url_clone, name_clone, None))
+            .await
+            .map_err(|e| e.to_string())?;
 
     let result = inner_result.map_err(|e| {
         let msg = e.to_string();
@@ -340,7 +356,10 @@ pub async fn install_git(
         updated_at: now,
         last_sync_at: None,
     };
-    state.db.save_skill(&skill_record).map_err(|e| e.to_string())?;
+    state
+        .db
+        .save_skill(&skill_record)
+        .map_err(|e| e.to_string())?;
 
     Ok(ManagedSkill {
         id: result.skill_id,
@@ -377,12 +396,14 @@ pub async fn list_git_skills(repo_url: String) -> Result<Vec<GitSkillCandidate>,
     .map_err(|e| e.to_string())?
 }
 
-fn clone_to_cache_for_list(clone_url: &str, branch: Option<&str>) -> Result<(PathBuf, String), String> {
+fn clone_to_cache_for_list(
+    clone_url: &str,
+    branch: Option<&str>,
+) -> Result<(PathBuf, String), String> {
     use crate::core::git_fetcher::clone_or_pull;
 
     let cache_root = std::env::temp_dir().join("ai-toolkit-git-cache");
-    std::fs::create_dir_all(&cache_root)
-        .map_err(|e| e.to_string())?;
+    std::fs::create_dir_all(&cache_root).map_err(|e| e.to_string())?;
 
     let repo_key = {
         use sha2::Digest;
@@ -396,14 +417,13 @@ fn clone_to_cache_for_list(clone_url: &str, branch: Option<&str>) -> Result<(Pat
     };
 
     let repo_dir = cache_root.join(repo_key);
-    let revision = clone_or_pull(clone_url, &repo_dir, branch)
-        .map_err(|e| {
-            // clone 失败时清理残留目录，避免后续 clone 报 "already exists"
-            if repo_dir.exists() {
-                let _ = std::fs::remove_dir_all(&repo_dir);
-            }
-            e.to_string()
-        })?;
+    let revision = clone_or_pull(clone_url, &repo_dir, branch).map_err(|e| {
+        // clone 失败时清理残留目录，避免后续 clone 报 "already exists"
+        if repo_dir.exists() {
+            let _ = std::fs::remove_dir_all(&repo_dir);
+        }
+        e.to_string()
+    })?;
 
     Ok((repo_dir, revision))
 }
@@ -415,7 +435,10 @@ pub async fn install_git_selection(
     subpath: String,
     name: Option<String>,
 ) -> Result<ManagedSkill, String> {
-    eprintln!("[DEBUG] install_git_selection called with url: {}, subpath: {}", repo_url, subpath);
+    eprintln!(
+        "[DEBUG] install_git_selection called with url: {}, subpath: {}",
+        repo_url, subpath
+    );
     let repo_url_clone = repo_url.clone();
     let subpath_clone = subpath.clone();
     let name_clone = name.clone();
@@ -445,7 +468,10 @@ pub async fn install_git_selection(
         updated_at: now,
         last_sync_at: None,
     };
-    state.db.save_skill(&skill_record).map_err(|e| e.to_string())?;
+    state
+        .db
+        .save_skill(&skill_record)
+        .map_err(|e| e.to_string())?;
 
     Ok(ManagedSkill {
         id: result.skill_id,
@@ -469,63 +495,69 @@ pub async fn install_local_selection(
     subpath: String,
     name: Option<String>,
 ) -> Result<ManagedSkill, String> {
-    eprintln!("[DEBUG] install_local_selection called: base={}, subpath={}, name={:?}", base_path, subpath, name);
+    eprintln!(
+        "[DEBUG] install_local_selection called: base={}, subpath={}, name={:?}",
+        base_path, subpath, name
+    );
 
-    let result: ManagedSkill = tokio::task::spawn_blocking(move || -> Result<ManagedSkill, String> {
-        use crate::core::sync_engine::copy_dir_recursive;
-        use crate::core::central_repo::{ensure_central_repo, resolve_central_repo_path};
+    let result: ManagedSkill =
+        tokio::task::spawn_blocking(move || -> Result<ManagedSkill, String> {
+            use crate::core::central_repo::{ensure_central_repo, resolve_central_repo_path};
+            use crate::core::sync_engine::copy_dir_recursive;
 
-        let base = PathBuf::from(&base_path);
-        let selected_dir = if subpath.is_empty() || subpath == "." {
-            base.clone()
-        } else {
-            base.join(&subpath)
-        };
+            let base = PathBuf::from(&base_path);
+            let selected_dir = if subpath.is_empty() || subpath == "." {
+                base.clone()
+            } else {
+                base.join(&subpath)
+            };
 
-        if !selected_dir.exists() {
-            return Err(format!("Source path does not exist: {:?}", selected_dir));
-        }
+            if !selected_dir.exists() {
+                return Err(format!("Source path does not exist: {:?}", selected_dir));
+            }
 
-        let skill_name = name.unwrap_or_else(|| {
-            selected_dir
-                .file_name()
-                .map(|v| v.to_string_lossy().to_string())
-                .unwrap_or_else(|| "unnamed-skill".to_string())
-        });
+            let skill_name = name.unwrap_or_else(|| {
+                selected_dir
+                    .file_name()
+                    .map(|v| v.to_string_lossy().to_string())
+                    .unwrap_or_else(|| "unnamed-skill".to_string())
+            });
 
-        let central_dir = resolve_central_repo_path().map_err(|e| e.to_string())?;
-        ensure_central_repo(&central_dir).map_err(|e| e.to_string())?;
+            let central_dir = resolve_central_repo_path().map_err(|e| e.to_string())?;
+            ensure_central_repo(&central_dir).map_err(|e| e.to_string())?;
 
-        let central_path = central_dir.join(&skill_name);
-        if central_path.exists() {
-            return Err(format!("Skill already exists in central repo: {:?}", central_path));
-        }
+            let central_path = central_dir.join(&skill_name);
+            if central_path.exists() {
+                return Err(format!(
+                    "Skill already exists in central repo: {:?}",
+                    central_path
+                ));
+            }
 
-        copy_dir_recursive(&selected_dir, &central_path)
-            .map_err(|e| e.to_string())?;
+            copy_dir_recursive(&selected_dir, &central_path).map_err(|e| e.to_string())?;
 
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_secs() as i64)
-            .unwrap_or(0);
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs() as i64)
+                .unwrap_or(0);
 
-        Ok(ManagedSkill {
-            id: format!("local-{}", skill_name),
-            name: skill_name,
-            description: None,
-            source_type: "local".to_string(),
-            source_ref: Some(selected_dir.to_string_lossy().to_string()),
-            source_subpath: None,
-            central_path: central_path.to_string_lossy().to_string(),
-            created_at: now,
-            updated_at: now,
-            last_sync_at: None,
-            status: "active".to_string(),
-            targets: vec![],
+            Ok(ManagedSkill {
+                id: format!("local-{}", skill_name),
+                name: skill_name,
+                description: None,
+                source_type: "local".to_string(),
+                source_ref: Some(selected_dir.to_string_lossy().to_string()),
+                source_subpath: None,
+                central_path: central_path.to_string_lossy().to_string(),
+                created_at: now,
+                updated_at: now,
+                last_sync_at: None,
+                status: "active".to_string(),
+                targets: vec![],
+            })
         })
-    })
-    .await
-    .map_err(|e| e.to_string())??;
+        .await
+        .map_err(|e| e.to_string())??;
 
     Ok(result)
 }
@@ -538,25 +570,24 @@ pub async fn sync_skill_to_tool(
     tool: String,
     sourcePath: String,
 ) -> Result<SyncTarget, String> {
-    eprintln!("[DEBUG] sync_skill_to_tool called: skillId={}, skillName={}, tool={}, source={}", skillId, skillName, tool, sourcePath);
+    eprintln!(
+        "[DEBUG] sync_skill_to_tool called: skillId={}, skillName={}, tool={}, source={}",
+        skillId, skillName, tool, sourcePath
+    );
 
     let result: SyncTarget = tokio::task::spawn_blocking(move || -> Result<SyncTarget, String> {
         use crate::core::sync_engine::sync_dir_for_tool_with_overwrite;
 
-        let tool_adapter = adapter_by_key(&tool)
-            .ok_or_else(|| format!("Unknown tool: {}", tool))?;
+        let tool_adapter =
+            adapter_by_key(&tool).ok_or_else(|| format!("Unknown tool: {}", tool))?;
 
         let source = PathBuf::from(&sourcePath);
         let target_dir = crate::skill_core::tool_adapters::resolve_default_path(&tool_adapter)
             .map_err(|e| e.to_string())?;
         let target_path = target_dir.join(&skillName);
 
-        let outcome = sync_dir_for_tool_with_overwrite(
-            &tool,
-            &source,
-            &target_path,
-            true,
-        ).map_err(|e| e.to_string())?;
+        let outcome = sync_dir_for_tool_with_overwrite(&tool, &source, &target_path, true)
+            .map_err(|e| e.to_string())?;
 
         let mode = match outcome.mode_used {
             crate::core::sync_engine::SyncMode::Symlink => "link",
@@ -589,50 +620,56 @@ pub async fn import_existing_skill(
     source_path: String,
     name: String,
 ) -> Result<ManagedSkill, String> {
-    eprintln!("[DEBUG] import_existing_skill called: source={}, name={}", source_path, name);
+    eprintln!(
+        "[DEBUG] import_existing_skill called: source={}, name={}",
+        source_path, name
+    );
 
-    let result: ManagedSkill = tokio::task::spawn_blocking(move || -> Result<ManagedSkill, String> {
-        use crate::core::sync_engine::copy_dir_recursive;
-        use crate::core::central_repo::{ensure_central_repo, resolve_central_repo_path};
+    let result: ManagedSkill =
+        tokio::task::spawn_blocking(move || -> Result<ManagedSkill, String> {
+            use crate::core::central_repo::{ensure_central_repo, resolve_central_repo_path};
+            use crate::core::sync_engine::copy_dir_recursive;
 
-        let source = PathBuf::from(&source_path);
-        if !source.exists() {
-            return Err(format!("Source path does not exist: {}", source_path));
-        }
+            let source = PathBuf::from(&source_path);
+            if !source.exists() {
+                return Err(format!("Source path does not exist: {}", source_path));
+            }
 
-        let central_dir = resolve_central_repo_path().map_err(|e| e.to_string())?;
-        ensure_central_repo(&central_dir).map_err(|e| e.to_string())?;
+            let central_dir = resolve_central_repo_path().map_err(|e| e.to_string())?;
+            ensure_central_repo(&central_dir).map_err(|e| e.to_string())?;
 
-        let central_path = central_dir.join(&name);
-        if central_path.exists() {
-            return Err(format!("Skill already exists in central repo: {:?}", central_path));
-        }
+            let central_path = central_dir.join(&name);
+            if central_path.exists() {
+                return Err(format!(
+                    "Skill already exists in central repo: {:?}",
+                    central_path
+                ));
+            }
 
-        copy_dir_recursive(&source, &central_path)
-            .map_err(|e| e.to_string())?;
+            copy_dir_recursive(&source, &central_path).map_err(|e| e.to_string())?;
 
-        let now = std::time::SystemTime::now()
-            .duration_since(std::time::UNIX_EPOCH)
-            .map(|d| d.as_secs() as i64)
-            .unwrap_or(0);
+            let now = std::time::SystemTime::now()
+                .duration_since(std::time::UNIX_EPOCH)
+                .map(|d| d.as_secs() as i64)
+                .unwrap_or(0);
 
-        Ok(ManagedSkill {
-            id: format!("local-{}", name),
-            name: name,
-            description: None,
-            source_type: "local".to_string(),
-            source_ref: Some(source_path),
-            source_subpath: None,
-            central_path: central_path.to_string_lossy().to_string(),
-            created_at: now,
-            updated_at: now,
-            last_sync_at: None,
-            status: "active".to_string(),
-            targets: vec![],
+            Ok(ManagedSkill {
+                id: format!("local-{}", name),
+                name: name,
+                description: None,
+                source_type: "local".to_string(),
+                source_ref: Some(source_path),
+                source_subpath: None,
+                central_path: central_path.to_string_lossy().to_string(),
+                created_at: now,
+                updated_at: now,
+                last_sync_at: None,
+                status: "active".to_string(),
+                targets: vec![],
+            })
         })
-    })
-    .await
-    .map_err(|e| e.to_string())??;
+        .await
+        .map_err(|e| e.to_string())??;
 
     Ok(result)
 }
@@ -668,11 +705,19 @@ pub async fn delete_managed_skill(_skill_id: String, skill_name: String) -> Resu
         if path.exists() {
             if is_link {
                 if let Err(e) = safe_remove(&path) {
-                    eprintln!("Warning: failed to remove symlink {}: {}", path.display(), e);
+                    eprintln!(
+                        "Warning: failed to remove symlink {}: {}",
+                        path.display(),
+                        e
+                    );
                 }
             } else {
                 if let Err(e) = std::fs::remove_dir_all(&path) {
-                    eprintln!("Warning: failed to remove directory {}: {}", path.display(), e);
+                    eprintln!(
+                        "Warning: failed to remove directory {}: {}",
+                        path.display(),
+                        e
+                    );
                 }
             }
         }
@@ -683,7 +728,11 @@ pub async fn delete_managed_skill(_skill_id: String, skill_name: String) -> Resu
     let central_skill_path = central_dir.join(&skill_name);
     if central_skill_path.exists() {
         if let Err(e) = std::fs::remove_dir_all(&central_skill_path) {
-            eprintln!("Warning: failed to remove central skill directory {}: {}", central_skill_path.display(), e);
+            eprintln!(
+                "Warning: failed to remove central skill directory {}: {}",
+                central_skill_path.display(),
+                e
+            );
         } else {
             println!("已删除 central repo 中的技能: {:?}", central_skill_path);
         }
@@ -694,16 +743,16 @@ pub async fn delete_managed_skill(_skill_id: String, skill_name: String) -> Resu
 }
 
 #[tauri::command]
-pub async fn unsync_skill_from_tool(
-    skill_name: String,
-    tool: String,
-) -> Result<(), String> {
+pub async fn unsync_skill_from_tool(skill_name: String, tool: String) -> Result<(), String> {
     // 只从指定工具目录删除技能，不删除 central repo 中的源文件
-    eprintln!("[DEBUG] unsync_skill_from_tool called: skillName={}, tool={}", skill_name, tool);
+    eprintln!(
+        "[DEBUG] unsync_skill_from_tool called: skillName={}, tool={}",
+        skill_name, tool
+    );
 
     tokio::task::spawn_blocking(move || -> Result<(), String> {
-        let tool_adapter = adapter_by_key(&tool)
-            .ok_or_else(|| format!("Unknown tool: {}", tool))?;
+        let tool_adapter =
+            adapter_by_key(&tool).ok_or_else(|| format!("Unknown tool: {}", tool))?;
 
         let installed = is_tool_installed(&tool_adapter);
         if !installed {
@@ -719,11 +768,19 @@ pub async fn unsync_skill_from_tool(
                 if path.exists() {
                     if skill.is_link {
                         if let Err(e) = safe_remove(path) {
-                            eprintln!("Warning: failed to remove symlink {}: {}", path.display(), e);
+                            eprintln!(
+                                "Warning: failed to remove symlink {}: {}",
+                                path.display(),
+                                e
+                            );
                         }
                     } else {
                         if let Err(e) = std::fs::remove_dir_all(path) {
-                            eprintln!("Warning: failed to remove directory {}: {}", path.display(), e);
+                            eprintln!(
+                                "Warning: failed to remove directory {}: {}",
+                                path.display(),
+                                e
+                            );
                         }
                     }
                     println!("已从 {} 移除技能: {}", tool, skill_name);
@@ -741,12 +798,11 @@ pub async fn unsync_skill_from_tool(
 }
 
 #[tauri::command]
-pub async fn update_skill(
-    state: State<'_, AppState>,
-    skill_id: String,
-) -> Result<(), String> {
+pub async fn update_skill(state: State<'_, AppState>, skill_id: String) -> Result<(), String> {
     // 从数据库获取技能信息
-    let skill_record = state.db.get_skill_by_id(&skill_id)
+    let skill_record = state
+        .db
+        .get_skill_by_id(&skill_id)
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("Skill not found: {}", skill_id))?;
 
@@ -764,11 +820,16 @@ pub async fn update_skill(
                 // 先删除旧的技能目录
                 let central_path_buf = PathBuf::from(&central_path);
                 if central_path_buf.exists() {
-                    eprintln!("[DEBUG] Removing existing skill directory: {:?}", central_path_buf);
+                    eprintln!(
+                        "[DEBUG] Removing existing skill directory: {:?}",
+                        central_path_buf
+                    );
                     // Check if the path is a junction / symlink — if so, only remove
                     // the link itself, not the target contents.
                     let is_link = central_path_buf.is_symlink()
-                        || cfg!(windows) && central_path_buf.is_dir() && is_junction(&central_path_buf);
+                        || cfg!(windows)
+                            && central_path_buf.is_dir()
+                            && is_junction(&central_path_buf);
                     if is_link {
                         safe_remove(&central_path_buf)
                             .map_err(|e| format!("Failed to remove old skill link: {}", e))?;
@@ -779,13 +840,18 @@ pub async fn update_skill(
                 }
                 // 重新安装（可能因 APFS 延迟而报 "already exists"，此时重试一次）
                 let name_for_retry = name.clone();
-                if let Err(e) = install_git_skill(&repo_url, Some(name), source_subpath.as_deref()) {
+                if let Err(e) = install_git_skill(&repo_url, Some(name), source_subpath.as_deref())
+                {
                     let err_msg = format!("{:?}", e);
                     if err_msg.contains("already exists") {
                         eprintln!("[DEBUG] Race condition detected, retrying after delay...");
                         std::thread::sleep(std::time::Duration::from_millis(200));
-                        install_git_skill(&repo_url, Some(name_for_retry), source_subpath.as_deref())
-                            .map_err(|e| format!("{:?}", e))?;
+                        install_git_skill(
+                            &repo_url,
+                            Some(name_for_retry),
+                            source_subpath.as_deref(),
+                        )
+                        .map_err(|e| format!("{:?}", e))?;
                     } else {
                         return Err(err_msg);
                     }
@@ -796,7 +862,9 @@ pub async fn update_skill(
             .map_err(|e| e.to_string())??;
 
             // 更新数据库记录的时间戳
-            state.db.update_skill_sync_time(&skill_id_clone)
+            state
+                .db
+                .update_skill_sync_time(&skill_id_clone)
                 .map_err(|e| e.to_string())?;
 
             return Ok(());
@@ -815,10 +883,15 @@ pub async fn rename_skill(
     new_name: String,
     new_source_ref: Option<String>,
 ) -> Result<(), String> {
-    eprintln!("[DEBUG] rename_skill called: skill_id={}, new_name={}, new_source_ref={:?}", skill_id, new_name, new_source_ref);
+    eprintln!(
+        "[DEBUG] rename_skill called: skill_id={}, new_name={}, new_source_ref={:?}",
+        skill_id, new_name, new_source_ref
+    );
 
     // 获取原有技能信息
-    let skill_record = state.db.get_skill_by_id(&skill_id)
+    let skill_record = state
+        .db
+        .get_skill_by_id(&skill_id)
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("Skill not found: {}", skill_id))?;
 
@@ -873,13 +946,13 @@ pub async fn rename_skill(
                 } else {
                     // 先删除目标（如果存在）
                     if new_tool_skill_path.exists() {
-                    if new_tool_skill_path.is_symlink() {
-                        safe_remove(&new_tool_skill_path)
-                            .map_err(|e| format!("删除目标符号链接失败: {}", e))?
-                    } else {
-                        std::fs::remove_dir_all(&new_tool_skill_path)
-                            .map_err(|e| format!("删除目标目录失败: {}", e))?
-                    }
+                        if new_tool_skill_path.is_symlink() {
+                            safe_remove(&new_tool_skill_path)
+                                .map_err(|e| format!("删除目标符号链接失败: {}", e))?
+                        } else {
+                            std::fs::remove_dir_all(&new_tool_skill_path)
+                                .map_err(|e| format!("删除目标目录失败: {}", e))?
+                        }
                     }
                     std::fs::rename(&old_tool_skill_path, &new_tool_skill_path)
                         .map_err(|e| format!("重命名工具技能文件夹失败: {}", e))?;
@@ -894,12 +967,15 @@ pub async fn rename_skill(
 
     // 3. 更新数据库
     let new_central_path = new_path.to_string_lossy().to_string();
-    state.db.update_skill_metadata(
-        &skill_id,
-        &new_name,
-        new_source_ref.as_deref(),
-        &new_central_path,
-    ).map_err(|e| e.to_string())?;
+    state
+        .db
+        .update_skill_metadata(
+            &skill_id,
+            &new_name,
+            new_source_ref.as_deref(),
+            &new_central_path,
+        )
+        .map_err(|e| e.to_string())?;
 
     eprintln!("[DEBUG] rename_skill completed successfully");
     Ok(())
@@ -919,8 +995,7 @@ pub async fn get_skill_readme(skill_name: String) -> Result<String, String> {
         return Err("SKILL.md 文件不存在".to_string());
     };
 
-    std::fs::read_to_string(&skill_path)
-        .map_err(|e| format!("读取文件失败: {}", e))
+    std::fs::read_to_string(&skill_path).map_err(|e| format!("读取文件失败: {}", e))
 }
 
 #[derive(Debug, Clone, Serialize)]

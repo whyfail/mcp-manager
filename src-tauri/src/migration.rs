@@ -52,8 +52,13 @@ pub fn migrate_from_old_dir() {
     if old_detected.exists() && !new_detected.exists() {
         if let Err(e) = fs::rename(&old_detected, &new_detected) {
             // rename 可能跨文件系统失败，尝试复制+删除
-            if let Err(e2) = fs::copy(&old_detected, &new_detected).and_then(|_| fs::remove_file(&old_detected)) {
-                eprintln!("[migration] detected.json 迁移失败: rename={}, copy={}", e, e2);
+            if let Err(e2) =
+                fs::copy(&old_detected, &new_detected).and_then(|_| fs::remove_file(&old_detected))
+            {
+                eprintln!(
+                    "[migration] detected.json 迁移失败: rename={}, copy={}",
+                    e, e2
+                );
             } else {
                 eprintln!("[migration] detected.json 已迁移");
             }
@@ -74,7 +79,10 @@ pub fn migrate_from_old_dir() {
                     eprintln!("[migration] skills/ 目录已迁移");
                 }
                 Err(e2) => {
-                    eprintln!("[migration] skills/ 目录迁移失败: rename={}, copy={}", e, e2);
+                    eprintln!(
+                        "[migration] skills/ 目录迁移失败: rename={}, copy={}",
+                        e, e2
+                    );
                 }
             }
         } else {

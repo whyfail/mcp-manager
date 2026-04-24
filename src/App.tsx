@@ -22,6 +22,8 @@ import {
 import { invoke } from "@tauri-apps/api/core";
 import { open } from "@tauri-apps/plugin-shell";
 import { useAppVersion } from "@/hooks/useAppVersion";
+import { appApi } from "@/lib/api";
+import type { AppConfigInfo, LaunchPreferences } from "@/types";
 
 type Tab = "mcp" | "skills" | "tools" | "settings" | "about";
 type Theme = "light" | "dark" | "system";
@@ -154,20 +156,6 @@ function App() {
 
 // 设置标签页
 const SettingsTab: React.FC = () => {
-  const apps = [
-    { name: "Qwen Code", path: "~/.qwen/settings.json" },
-    { name: "Claude Code", path: "~/.claude.json" },
-    { name: "Codex", path: "~/.codex/config.toml" },
-    { name: "Gemini CLI", path: "~/.gemini/settings.json" },
-    { name: "OpenCode", path: "~/.config/opencode/opencode.json" },
-    { name: "Qoder", path: "~/Library/Application Support/Qoder/SharedClientCache/mcp.json" },
-    { name: "Qoder CLI", path: "~/.qodercli/settings.json" },
-    { name: "Trae", path: "~/Library/Application Support/Trae/User/mcp.json" },
-    { name: "Trae CN", path: "~/Library/Application Support/Trae CN/User/mcp.json" },
-    { name: "TRAE SOLO CN", path: "~/Library/Application Support/TRAE SOLO CN/User/mcp.json" },
-    { name: "CodeBuddy", path: "~/.codebuddy/mcp.json" },
-  ];
-
   const [checking, setChecking] = useState(false);
   const [updateInfo, setUpdateInfo] = useState<{
     version: string;
@@ -176,7 +164,92 @@ const SettingsTab: React.FC = () => {
   const [isLatest, setIsLatest] = useState(false);
   const [installing, setInstalling] = useState(false);
   const [showModal, setShowModal] = useState(false);
+  const [apps, setApps] = useState<AppConfigInfo[]>([]);
+  const [loadingApps, setLoadingApps] = useState(true);
+  const [launchPreferences, setLaunchPreferences] = useState<LaunchPreferences | null>(null);
+  const [savingTerminal, setSavingTerminal] = useState(false);
   const appVersion = useAppVersion();
+  const isWindows = navigator.userAgent.includes("Windows");
+  const isMac = navigator.userAgent.includes("Mac");
+  const dbPath = isWindows ? "%USERPROFILE%\\.ai-toolkit\\ai-toolkit.db" : "~/.ai-toolkit/ai-toolkit.db";
+  const skillsPath = isWindows ? "%USERPROFILE%\\.ai-toolkit\\skills\\" : "~/.ai-toolkit/skills/";
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadAppConfigs = async () => {
+      try {
+        const configs = await appApi.getAppConfigs();
+        if (!cancelled) {
+          setApps(configs);
+        }
+      } catch (err) {
+        console.error("获取应用配置失败:", err);
+        if (!cancelled) {
+          toast.error(`获取应用配置失败: ${err}`);
+        }
+      } finally {
+        if (!cancelled) {
+          setLoadingApps(false);
+        }
+      }
+    };
+
+    loadAppConfigs();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!isMac && !isWindows) return;
+
+    let cancelled = false;
+    const loadLaunchPreferences = async () => {
+      try {
+        const preferences = await appApi.getLaunchPreferences();
+        if (!cancelled) {
+          setLaunchPreferences(preferences);
+        }
+      } catch (err) {
+        console.error("获取启动偏好失败:", err);
+        if (!cancelled) {
+          toast.error(`获取启动偏好失败: ${err}`);
+        }
+      }
+    };
+
+    loadLaunchPreferences();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [isMac, isWindows]);
+
+  const handleTerminalChange = async (terminalId: string) => {
+    if (!launchPreferences) return;
+
+    const previous = launchPreferences.defaultTerminal;
+    setLaunchPreferences({
+      ...launchPreferences,
+      defaultTerminal: terminalId,
+    });
+    setSavingTerminal(true);
+    try {
+      await appApi.setDefaultTerminal(terminalId);
+      toast.success("默认启动终端已更新");
+    } catch (err) {
+      console.error("保存默认终端失败:", err);
+      setLaunchPreferences({
+        ...launchPreferences,
+        defaultTerminal: previous,
+      });
+      toast.error(`保存默认终端失败: ${err}`);
+    } finally {
+      setSavingTerminal(false);
+    }
+  };
 
   const checkUpdate = async () => {
     setChecking(true);
@@ -269,7 +342,7 @@ const SettingsTab: React.FC = () => {
                   数据库路径
                 </p>
                 <code className="block mt-1 px-3 py-2 bg-[hsl(var(--muted))] rounded-lg text-sm font-mono">
-                  ~/.ai-toolkit/ai-toolkit.db
+                  {dbPath}
                 </code>
               </div>
               <div>
@@ -277,24 +350,59 @@ const SettingsTab: React.FC = () => {
                   Skills 列表路径
                 </p>
                 <code className="block mt-1 px-3 py-2 bg-[hsl(var(--muted))] rounded-lg text-sm font-mono">
-                  ~/.ai-toolkit/skills/
+                  {skillsPath}
                 </code>
               </div>
             </div>
           </section>
 
+          {(isMac || isWindows) && launchPreferences && launchPreferences.availableTerminals.length > 0 && (
+            <section className="rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-6">
+              <h3 className="text-base font-medium mb-4">默认启动终端</h3>
+              <div className="space-y-3">
+                <select
+                  value={launchPreferences.defaultTerminal}
+                  onChange={(e) => handleTerminalChange(e.target.value)}
+                  disabled={savingTerminal}
+                  className="w-full rounded-lg border border-[hsl(var(--border))] bg-[hsl(var(--background))] px-3 py-2.5 text-sm outline-none focus:border-[hsl(var(--primary))] disabled:opacity-60"
+                >
+                  {launchPreferences.availableTerminals.map((terminal) => (
+                    <option
+                      key={terminal.id}
+                      value={terminal.id}
+                      disabled={!terminal.available}
+                    >
+                      {terminal.label}{terminal.available ? "" : "（未安装）"}
+                    </option>
+                  ))}
+                </select>
+                <p className="text-xs text-[hsl(var(--muted-foreground))]">
+                  {isMac
+                    ? "启动 CLI 工具时优先使用这个终端。目前支持 Terminal、iTerm、Warp 和 Ghostty。"
+                    : "启动 CLI 工具时优先使用这个终端。目前支持 Windows Terminal、PowerShell 和 Command Prompt。"}
+                </p>
+              </div>
+            </section>
+          )}
+
           {/* 支持的应用 */}
           <section className="rounded-xl border border-[hsl(var(--border))] bg-[hsl(var(--card))] p-6">
             <h3 className="text-base font-medium mb-4">支持的应用</h3>
             <div className="space-y-2">
+              {loadingApps && (
+                <div className="flex items-center gap-2 px-3 py-2.5 text-sm text-[hsl(var(--muted-foreground))]">
+                  <Loader2 size={14} className="animate-spin" />
+                  正在加载配置路径...
+                </div>
+              )}
               {apps.map((app) => (
                 <div
-                  key={app.name}
+                  key={app.id}
                   className="flex items-center justify-between py-2.5 px-3 rounded-lg hover:bg-[hsl(var(--muted))] transition-colors"
                 >
                   <span className="text-sm font-medium">{app.name}</span>
                   <code className="text-xs text-[hsl(var(--muted-foreground))] bg-[hsl(var(--muted))] px-2 py-1 rounded">
-                    {app.path}
+                    {app.configPath}
                   </code>
                 </div>
               ))}

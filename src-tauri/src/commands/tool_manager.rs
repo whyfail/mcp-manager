@@ -35,7 +35,6 @@ pub struct InstallRequest {
 #[tauri::command]
 pub async fn get_tool_infos() -> Result<Vec<ToolInfo>, String> {
     use futures::future;
-    use tokio::join;
 
     // 先收集所有 AppType，避免临时值问题
     let apps: Vec<_> = AppType::all();
@@ -44,30 +43,11 @@ pub async fn get_tool_infos() -> Result<Vec<ToolInfo>, String> {
     let futures: Vec<_> = apps
         .iter()
         .map(|app| async move {
-            let mut info = match build_tool_info(app).await {
+            let info = match build_tool_info(app).await {
                 Some(info) => info,
                 None => return None,
             };
-
-            if info.installed {
-                // 并行获取版本信息
-                let (version, latest_version, detected_method) = join!(
-                    ToolManagerService::get_version(app),
-                    ToolManagerService::get_latest_version(app),
-                    ToolManagerService::detect_install_method(app),
-                );
-                info.version = version;
-                info.latest_version = latest_version;
-                info.detected_method = detected_method
-                    .map(|m| match m {
-                        crate::services::tool_manager::InstallMethodType::Brew => "Homebrew".to_string(),
-                        crate::services::tool_manager::InstallMethodType::Npm => "npm".to_string(),
-                        crate::services::tool_manager::InstallMethodType::Curl => "curl 脚本".to_string(),
-                        crate::services::tool_manager::InstallMethodType::Winget => "Winget".to_string(),
-                        crate::services::tool_manager::InstallMethodType::Scoop => "Scoop".to_string(),
-                        crate::services::tool_manager::InstallMethodType::Custom => "自定义".to_string(),
-                    });
-            }
+            // 首次加载只返回基础安装信息，避免版本/网络检测阻塞首屏。
             Some(info)
         })
         .collect();
@@ -87,15 +67,25 @@ pub async fn get_tool_info(app_type: String) -> Result<ToolInfo, String> {
     if info.installed {
         info.version = ToolManagerService::get_version(&app).await;
         info.latest_version = ToolManagerService::get_latest_version(&app).await;
-        info.detected_method = ToolManagerService::detect_install_method(&app).await
-            .map(|m| match m {
-                crate::services::tool_manager::InstallMethodType::Brew => "Homebrew".to_string(),
-                crate::services::tool_manager::InstallMethodType::Npm => "npm".to_string(),
-                crate::services::tool_manager::InstallMethodType::Curl => "curl 脚本".to_string(),
-                crate::services::tool_manager::InstallMethodType::Winget => "Winget".to_string(),
-                crate::services::tool_manager::InstallMethodType::Scoop => "Scoop".to_string(),
-                crate::services::tool_manager::InstallMethodType::Custom => "自定义".to_string(),
-            });
+        info.detected_method =
+            ToolManagerService::detect_install_method(&app)
+                .await
+                .map(|m| match m {
+                    crate::services::tool_manager::InstallMethodType::Brew => {
+                        "Homebrew".to_string()
+                    }
+                    crate::services::tool_manager::InstallMethodType::Npm => "npm".to_string(),
+                    crate::services::tool_manager::InstallMethodType::Curl => {
+                        "curl 脚本".to_string()
+                    }
+                    crate::services::tool_manager::InstallMethodType::Winget => {
+                        "Winget".to_string()
+                    }
+                    crate::services::tool_manager::InstallMethodType::Scoop => "Scoop".to_string(),
+                    crate::services::tool_manager::InstallMethodType::Custom => {
+                        "自定义".to_string()
+                    }
+                });
     }
     Ok(info)
 }
@@ -104,7 +94,10 @@ pub async fn get_tool_info(app_type: String) -> Result<ToolInfo, String> {
 pub async fn install_tool(app_type: String, method_index: usize) -> Result<(), String> {
     let app = AppType::from_str(&app_type)?;
     let install_info = app.get_install_info().ok_or("Unknown app type")?;
-    let method = install_info.methods.get(method_index).ok_or("Invalid method index")?;
+    let method = install_info
+        .methods
+        .get(method_index)
+        .ok_or("Invalid method index")?;
     ToolManagerService::install(&app, method).await
 }
 

@@ -106,6 +106,12 @@ impl Database {
                 synced_at INTEGER,
                 FOREIGN KEY(skill_id) REFERENCES managed_skills(id) ON DELETE CASCADE
             );
+
+            CREATE TABLE IF NOT EXISTS app_settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                updated_at INTEGER DEFAULT (strftime('%s', 'now') * 1000)
+            );
             ",
         )
         .map_err(|e| AppError::Database(format!("Failed to initialize schema: {}", e)))?;
@@ -136,6 +142,44 @@ impl Database {
             [],
         );
 
+        Ok(())
+    }
+
+    pub fn get_setting(&self, key: &str) -> Result<Option<String>, AppError> {
+        let conn = self.conn.lock();
+        let mut stmt = conn
+            .prepare("SELECT value FROM app_settings WHERE key = ?1")
+            .map_err(|e| AppError::Database(format!("Failed to prepare setting query: {}", e)))?;
+        let mut rows = stmt
+            .query([key])
+            .map_err(|e| AppError::Database(format!("Failed to query setting: {}", e)))?;
+
+        if let Some(row) = rows
+            .next()
+            .map_err(|e| AppError::Database(format!("Failed to read setting row: {}", e)))?
+        {
+            let value: String = row
+                .get(0)
+                .map_err(|e| AppError::Database(format!("Failed to decode setting: {}", e)))?;
+            Ok(Some(value))
+        } else {
+            Ok(None)
+        }
+    }
+
+    pub fn set_setting(&self, key: &str, value: &str) -> Result<(), AppError> {
+        let conn = self.conn.lock();
+        conn.execute(
+            "
+            INSERT INTO app_settings (key, value, updated_at)
+            VALUES (?1, ?2, strftime('%s', 'now') * 1000)
+            ON CONFLICT(key) DO UPDATE SET
+                value = excluded.value,
+                updated_at = excluded.updated_at
+            ",
+            [key, value],
+        )
+        .map_err(|e| AppError::Database(format!("Failed to save setting: {}", e)))?;
         Ok(())
     }
 }

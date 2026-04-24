@@ -1,5 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
-import type { McpServer, AppConfigInfo, ToolInfo } from "@/types";
+import type { McpServer, AppConfigInfo, LaunchPreferences, ToolInfo } from "@/types";
 import type { AgentInfo, ToolStatus, ToolAdapter, DetectedSkill, InstalledToolsReport } from "@/contexts/InstalledToolsContext";
 
 // Re-export types for external use
@@ -42,6 +42,14 @@ export const appApi = {
   // 获取应用配置
   async getAppConfigs(): Promise<AppConfigInfo[]> {
     return invoke<AppConfigInfo[]>("get_app_configs");
+  },
+
+  async getLaunchPreferences(): Promise<LaunchPreferences> {
+    return invoke<LaunchPreferences>("get_launch_preferences");
+  },
+
+  async setDefaultTerminal(terminalId: string): Promise<void> {
+    return invoke("set_default_terminal", { terminalId });
   },
 
   // 从指定应用导入

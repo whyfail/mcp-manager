@@ -1,15 +1,105 @@
 use serde::{Deserialize, Serialize};
-use tauri::State;
 use std::str::FromStr;
+use tauri::State;
 
-use crate::agents::{detect_all_agents, DetectedAgent, get_agent_config_paths, get_agent_name};
+use crate::agents::{detect_all_agents, get_agent_config_paths, get_agent_name, DetectedAgent};
 use crate::app_state::AppState;
 use crate::database::McpApps;
 use crate::import::import_from_path;
 use crate::mcp::AppType;
 use crate::services::sync;
+use crate::services::tool_manager::which_binary;
 use crate::utils::SuppressConsole;
 use std::process::Command;
+#[cfg(target_os = "macos")]
+use std::{fs, os::unix::fs::PermissionsExt};
+
+#[cfg(windows)]
+fn powershell_escape_single_quoted(input: &str) -> String {
+    input.replace('\'', "''")
+}
+
+#[cfg(target_os = "macos")]
+fn shell_escape_single_quoted(input: &str) -> String {
+    input.replace('\'', "'\\''")
+}
+
+#[cfg(target_os = "macos")]
+fn yaml_escape_single_quoted(input: &str) -> String {
+    input.replace('\'', "''")
+}
+
+#[cfg(target_os = "macos")]
+fn resolve_preferred_macos_terminal(state: &AppState) -> String {
+    let preferred = state
+        .db
+        .get_setting("default_terminal")
+        .ok()
+        .flatten()
+        .unwrap_or_else(|| "terminal".to_string());
+
+    let available = [
+        (
+            "terminal",
+            [
+                "/System/Applications/Utilities/Terminal.app",
+                "/Applications/Terminal.app",
+            ]
+            .iter()
+            .any(|path| std::path::Path::new(path).exists()),
+        ),
+        (
+            "iterm",
+            ["/Applications/iTerm.app", "/Applications/iTerm2.app"]
+                .iter()
+                .any(|path| std::path::Path::new(path).exists()),
+        ),
+        (
+            "warp",
+            ["/Applications/Warp.app", "/Applications/Warp Preview.app"]
+                .iter()
+                .any(|path| std::path::Path::new(path).exists()),
+        ),
+        (
+            "ghostty",
+            ["/Applications/Ghostty.app"]
+                .iter()
+                .any(|path| std::path::Path::new(path).exists()),
+        ),
+    ];
+
+    if available
+        .iter()
+        .any(|(id, is_available)| *id == preferred && *is_available)
+    {
+        preferred
+    } else {
+        "terminal".to_string()
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn resolve_preferred_windows_terminal(state: &AppState) -> String {
+    let preferred = state
+        .db
+        .get_setting("default_terminal")
+        .ok()
+        .flatten()
+        .unwrap_or_else(|| "windows-terminal".to_string());
+
+    let has_wt = which_binary("wt").is_some();
+    let has_powershell = which_binary("powershell").is_some();
+    let has_cmd = which_binary("cmd").is_some();
+
+    match preferred.as_str() {
+        "windows-terminal" if has_wt => preferred,
+        "powershell" if has_powershell => preferred,
+        "command-prompt" if has_cmd => preferred,
+        _ if has_wt => "windows-terminal".to_string(),
+        _ if has_powershell => "powershell".to_string(),
+        _ => "command-prompt".to_string(),
+    }
+}
 
 /// 检测 Node.js 环境并返回需要添加到 PATH 的路径
 /// 返回 Ok(bin_dir_path) 或 Err(error_message)
@@ -18,7 +108,11 @@ fn detect_node_environment() -> Result<String, String> {
     let home = std::env::var("HOME").unwrap_or_default();
 
     // 先检测 node 是否已经可用 (直接用 which)
-    if let Ok(output) = Command::new("which").suppress_console().arg("node").output() {
+    if let Ok(output) = Command::new("which")
+        .suppress_console()
+        .arg("node")
+        .output()
+    {
         if output.status.success() {
             let node_path = String::from_utf8_lossy(&output.stdout).trim().to_string();
             if !node_path.is_empty() {
@@ -33,7 +127,8 @@ fn detect_node_environment() -> Result<String, String> {
     let nvm_prefix = format!("{}/.nvm/versions/node", home);
     if std::path::Path::new(&nvm_prefix).exists() {
         if let Ok(entries) = std::fs::read_dir(&nvm_prefix) {
-            if let Some(newest) = entries.filter_map(|e| e.ok())
+            if let Some(newest) = entries
+                .filter_map(|e| e.ok())
                 .filter_map(|e| {
                     let name = e.file_name().to_string_lossy().to_string();
                     if name.starts_with('v') {
@@ -42,7 +137,8 @@ fn detect_node_environment() -> Result<String, String> {
                         None
                     }
                 })
-                .max() {
+                .max()
+            {
                 return Ok(format!("{}/.nvm/versions/node/{}/bin", home, newest));
             }
         }
@@ -51,7 +147,11 @@ fn detect_node_environment() -> Result<String, String> {
     // 检查 fnm
     let fnm_dir = format!("{}/.fnm", home);
     if std::path::Path::new(&fnm_dir).exists() {
-        if let Ok(output) = Command::new("fnm").suppress_console().arg("current").output() {
+        if let Ok(output) = Command::new("fnm")
+            .suppress_console()
+            .arg("current")
+            .output()
+        {
             if output.status.success() {
                 let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
                 if !version.is_empty() {
@@ -95,7 +195,11 @@ fn detect_node_environment() -> Result<String, String> {
 #[cfg(windows)]
 fn detect_node_environment() -> Result<String, String> {
     // 1. 先尝试 where node 找到 node.exe
-    if let Ok(output) = Command::new("where").suppress_console().arg("node").output() {
+    if let Ok(output) = Command::new("where")
+        .suppress_console()
+        .arg("node")
+        .output()
+    {
         if output.status.success() {
             let node_path = String::from_utf8_lossy(&output.stdout).trim().to_string();
             // where 可能返回多行，取第一行
@@ -113,11 +217,18 @@ fn detect_node_environment() -> Result<String, String> {
     let home = std::env::var("USERPROFILE").unwrap_or_default();
 
     // 2. 检查 fnm (Windows 常用)
-    if let Ok(output) = Command::new("fnm").suppress_console().arg("current").output() {
+    if let Ok(output) = Command::new("fnm")
+        .suppress_console()
+        .arg("current")
+        .output()
+    {
         if output.status.success() {
             let version = String::from_utf8_lossy(&output.stdout).trim().to_string();
             if !version.is_empty() {
-                let fnm_path = format!("{}\\AppData\\Roaming\\fnm\\versions\\{}\\installation", home, version);
+                let fnm_path = format!(
+                    "{}\\AppData\\Roaming\\fnm\\versions\\{}\\installation",
+                    home, version
+                );
                 if std::path::Path::new(&fnm_path).exists() {
                     return Ok(fnm_path);
                 }
@@ -131,10 +242,21 @@ fn detect_node_environment() -> Result<String, String> {
 
     // 3. 检查 nvm-windows
     let nvm_home = std::env::var("NVM_HOME").unwrap_or_default();
-    if !nvm_home.is_empty() {
-        let nvm_symlink = format!("{}\\v{}", nvm_home, std::env::var("NVM_SYMLINK").unwrap_or_default());
-        if std::path::Path::new(&nvm_symlink).exists() {
+    let nvm_symlink = std::env::var("NVM_SYMLINK").unwrap_or_default();
+    if !nvm_symlink.is_empty() {
+        if std::path::Path::new(&nvm_symlink).join("node.exe").exists() {
             return Ok(nvm_symlink);
+        }
+    }
+    if !nvm_home.is_empty() {
+        if let Ok(entries) = std::fs::read_dir(&nvm_home) {
+            if let Some(version_dir) = entries
+                .filter_map(|e| e.ok())
+                .map(|e| e.path())
+                .find(|path| path.join("node.exe").exists())
+            {
+                return Ok(version_dir.to_string_lossy().to_string());
+            }
         }
     }
 
@@ -151,7 +273,11 @@ fn detect_node_environment() -> Result<String, String> {
     }
 
     // 6. 检查默认 npm 全局目录
-    if let Ok(output) = Command::new("cmd").suppress_console().args(["/C", "npm config get prefix"]).output() {
+    if let Ok(output) = Command::new("cmd")
+        .suppress_console()
+        .args(["/C", "npm config get prefix"])
+        .output()
+    {
         if output.status.success() {
             let prefix = String::from_utf8_lossy(&output.stdout).trim().to_string();
             if !prefix.is_empty() && std::path::Path::new(&prefix).exists() {
@@ -206,14 +332,14 @@ pub async fn sync_agent_mcp(
     // Get OS-specific paths and try to import from the first existing one
     let paths = get_agent_config_paths(&app_type);
     let mut imported = None;
-    
+
     for path in &paths {
         if let Some(result) = import_from_path(app_type.clone(), path) {
             imported = Some(result);
             break;
         }
     }
-    
+
     let imported = imported.ok_or_else(|| format!("Failed to import from {}", agent_id))?;
 
     let mut count = 0;
@@ -248,7 +374,9 @@ pub async fn open_config_file(agent_id: String) -> Result<(), String> {
     let app_type = AppType::from_str(&agent_id).map_err(|e| e.to_string())?;
     let paths = get_agent_config_paths(&app_type);
 
-    let full_path = paths.first().ok_or_else(|| format!("No config path found for {}", agent_id))?;
+    let full_path = paths
+        .first()
+        .ok_or_else(|| format!("No config path found for {}", agent_id))?;
 
     #[cfg(target_os = "macos")]
     {
@@ -260,9 +388,10 @@ pub async fn open_config_file(agent_id: String) -> Result<(), String> {
     }
     #[cfg(target_os = "windows")]
     {
+        let path_str = full_path.to_string_lossy().to_string();
         Command::new("cmd")
             .suppress_console()
-            .args(["/c", "start", &full_path.to_string_lossy()])
+            .args(["/c", "start", "", &path_str])
             .spawn()
             .map_err(|e| format!("Failed to open file: {}", e))?;
     }
@@ -298,34 +427,123 @@ fn get_agent_launch_command(app: &AppType) -> Option<String> {
 
 /// 启动 Agent 工具（打开默认终端并运行命令）
 #[tauri::command]
-pub async fn launch_agent(agent_id: String) -> Result<(), String> {
+pub async fn launch_agent(state: State<'_, AppState>, agent_id: String) -> Result<(), String> {
     let app_type = AppType::from_str(&agent_id).map_err(|e| e.to_string())?;
 
     let Some(command) = get_agent_launch_command(&app_type) else {
-        return Err(format!("{} 没有 CLI 命令，无法启动", get_agent_name(&app_type)));
+        return Err(format!(
+            "{} 没有 CLI 命令，无法启动",
+            get_agent_name(&app_type)
+        ));
     };
 
     // 检测 Node.js 环境
-    let node_bin_dir = detect_node_environment().map_err(|e| {
-        format!("{}: 请先安装 Node.js", e)
+    let node_bin_dir = detect_node_environment().map_err(|e| format!("{}: 请先安装 Node.js", e))?;
+    let resolved_command = which_binary(&command).ok_or_else(|| {
+        format!(
+            "未检测到 {} 可执行文件，请先安装 {}",
+            command,
+            get_agent_name(&app_type)
+        )
     })?;
 
     #[cfg(target_os = "macos")]
     {
-        let script_path = format!("/tmp/ai_toolkit_run_{}.sh", std::process::id());
+        let terminal_app = resolve_preferred_macos_terminal(&state);
+        let work_dir = dirs::desktop_dir()
+            .or_else(dirs::home_dir)
+            .ok_or("无法获取启动目录")?
+            .to_string_lossy()
+            .to_string();
+        let timestamp = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .map(|d| d.as_millis())
+            .unwrap_or(0);
+        let script_path = format!(
+            "/tmp/ai_toolkit_run_{}_{}.command",
+            std::process::id(),
+            timestamp
+        );
+        let escaped_work_dir = shell_escape_single_quoted(&work_dir);
+        let escaped_node_bin_dir = shell_escape_single_quoted(&node_bin_dir);
+        let escaped_command = shell_escape_single_quoted(&resolved_command);
+        let shell_command = format!(
+            "export PATH='{}':$PATH:/usr/local/bin:/opt/homebrew/bin && '{}'",
+            escaped_node_bin_dir, escaped_command
+        );
         let full_cmd = format!(
-            "cd ~/Desktop && export PATH=\"{}:$PATH:/usr/local/bin:/opt/homebrew/bin\" && {}; exec $SHELL",
-            node_bin_dir, command
+            "#!/bin/zsh\n\
+             rm -f \"$0\" 2>/dev/null &\n\
+             cd '{}' || exit 1\n\
+             {}\n\
+             exec $SHELL -l\n",
+            escaped_work_dir, shell_command
         );
-        std::fs::write(&script_path, &full_cmd)
-            .map_err(|e| format!("写入脚本失败: {}", e))?;
+        fs::write(&script_path, &full_cmd).map_err(|e| format!("写入脚本失败: {}", e))?;
+        fs::set_permissions(&script_path, fs::Permissions::from_mode(0o755))
+            .map_err(|e| format!("设置脚本权限失败: {}", e))?;
 
-        let script = format!(
-            "tell application \"Terminal\"\n\
-             do script \"source {0}\"\n\
-             end tell",
-            script_path
-        );
+        let script = if terminal_app == "iterm" {
+            format!(
+                "tell application \"iTerm2\"\n\
+                 activate\n\
+                 create window with default profile command \"source {0}\"\n\
+                 end tell",
+                script_path
+            )
+        } else if terminal_app == "ghostty" {
+            format!(
+                "tell application \"Ghostty\"\n\
+                 activate\n\
+                 set ghosttyWindow to new window\n\
+                 set ghosttyTerminal to focused terminal of selected tab of ghosttyWindow\n\
+                 input text \"source {0}\" to ghosttyTerminal\n\
+                 send key \"enter\" to ghosttyTerminal\n\
+                 end tell",
+                script_path
+            )
+        } else if terminal_app == "warp" {
+            let (warp_app, warp_scheme) = if std::path::Path::new("/Applications/Warp.app").exists() {
+                ("Warp", "warp")
+            } else {
+                ("Warp Preview", "warppreview")
+            };
+            let home = dirs::home_dir().ok_or("无法获取 Home 目录")?;
+            let launch_dir = home.join(".warp").join("launch_configurations");
+            fs::create_dir_all(&launch_dir).map_err(|e| format!("创建 Warp 配置目录失败: {}", e))?;
+            let launch_file_name = format!("ai-toolkit-{}.yaml", agent_id);
+            let launch_file_path = launch_dir.join(&launch_file_name);
+            let yaml_work_dir = yaml_escape_single_quoted(&work_dir);
+            let yaml_command = yaml_escape_single_quoted(&shell_command);
+            let launch_yaml = format!(
+                "---\nname: AI Toolkit {0}\nwindows:\n  - tabs:\n      - title: {0}\n        layout:\n          cwd: '{1}'\n          commands:\n            - exec: '{2}'\n",
+                get_agent_name(&app_type),
+                yaml_work_dir,
+                yaml_command
+            );
+            fs::write(&launch_file_path, launch_yaml)
+                .map_err(|e| format!("写入 Warp 启动配置失败: {}", e))?;
+
+            let warp_uri = format!("{warp_scheme}://launch/{launch_file_name}");
+            let output = Command::new("open")
+                .suppress_console()
+                .args(["-a", warp_app, &warp_uri])
+                .output()
+                .map_err(|e| format!("启动 {} 失败: {}", agent_id, e))?;
+            if !output.status.success() {
+                let stderr = String::from_utf8_lossy(&output.stderr);
+                return Err(format!("启动 {} 失败: {}", agent_id, stderr));
+            }
+            return Ok(());
+        } else {
+            format!(
+                "tell application \"Terminal\"\n\
+                 activate\n\
+                 do script \"source {0}\"\n\
+                 end tell",
+                script_path
+            )
+        };
         let output = Command::new("osascript")
             .suppress_console()
             .args(["-e", &script])
@@ -339,20 +557,58 @@ pub async fn launch_agent(agent_id: String) -> Result<(), String> {
 
     #[cfg(target_os = "windows")]
     {
+        let preferred_terminal = resolve_preferred_windows_terminal(&state);
         let desktop_path = dirs::desktop_dir()
             .or_else(|| dirs::home_dir())
             .ok_or("无法获取桌面路径")?
             .to_string_lossy()
             .to_string();
+        let powershell_desktop_path = powershell_escape_single_quoted(&desktop_path);
+        let powershell_node_bin_dir = powershell_escape_single_quoted(&node_bin_dir);
+        let powershell_command = powershell_escape_single_quoted(&resolved_command);
 
-        let full_cmd = format!(
-            "cd '{}'; $env:PATH = '{};' + $env:PATH; {}",
-            desktop_path,
-            node_bin_dir,
-            command
+        let powershell_full_cmd = format!(
+            "Set-Location -LiteralPath '{}'; $env:PATH = '{};' + $env:PATH; & '{}'",
+            powershell_desktop_path, powershell_node_bin_dir, powershell_command
         );
-        Command::new("wt")
-            .args(["new-tab", "powershell", "-NoExit", "-c", &full_cmd])
+
+        let command_prompt_cmd = format!(
+            "cd /d \"{}\" && set \"PATH={};%PATH%\" && \"{}\"",
+            desktop_path, node_bin_dir, resolved_command
+        );
+
+        if preferred_terminal == "windows-terminal" {
+            let try_windows_terminal = Command::new("wt")
+                .args([
+                    "new-tab",
+                    "powershell",
+                    "-NoExit",
+                    "-Command",
+                    &powershell_full_cmd,
+                ])
+                .spawn();
+            if try_windows_terminal.is_ok() {
+                return Ok(());
+            }
+        }
+
+        if preferred_terminal == "powershell" || preferred_terminal == "windows-terminal" {
+            let ps_start = format!(
+                "Start-Process powershell -ArgumentList '-NoExit','-Command','{}'",
+                powershell_full_cmd.replace('\'', "''")
+            );
+            let try_powershell = Command::new("powershell")
+                .suppress_console()
+                .args(["-NoProfile", "-Command", &ps_start])
+                .spawn();
+            if try_powershell.is_ok() {
+                return Ok(());
+            }
+        }
+
+        Command::new("cmd")
+            .suppress_console()
+            .args(["/C", "start", "", "cmd", "/K", &command_prompt_cmd])
             .spawn()
             .map_err(|e| format!("启动 {} 失败: {}", agent_id, e))?;
     }

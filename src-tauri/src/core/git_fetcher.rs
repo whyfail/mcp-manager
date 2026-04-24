@@ -2,16 +2,12 @@ use std::path::Path;
 use std::process::{Command, Stdio};
 use std::time::Duration;
 
-use anyhow::{Context, Result};
 use crate::utils::SuppressConsole;
+use anyhow::{Context, Result};
 
 /// Clone or update a git repository.
 /// Returns the HEAD commit hash.
-pub fn clone_or_pull(
-    repo_url: &str,
-    dest: &Path,
-    branch: Option<&str>,
-) -> Result<String> {
+pub fn clone_or_pull(repo_url: &str, dest: &Path, branch: Option<&str>) -> Result<String> {
     // Ensure parent exists so `git clone` can create dest.
     if let Some(parent) = dest.parent() {
         std::fs::create_dir_all(parent)
@@ -75,7 +71,8 @@ fn fetch_and_checkout(dest: &Path, branch: Option<&str>) -> Result<String> {
             .args(["fetch", "--prune", "origin"])
             .env("GIT_TERMINAL_PROMPT", "0"),
         Duration::from_secs(180),
-    ).with_context(|| format!("git fetch in {:?}", dest))?;
+    )
+    .with_context(|| format!("git fetch in {:?}", dest))?;
 
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
@@ -95,7 +92,8 @@ fn fetch_and_checkout(dest: &Path, branch: Option<&str>) -> Result<String> {
                 .args(["checkout", "-B", b, &format!("origin/{}", b)])
                 .env("GIT_TERMINAL_PROMPT", "0"),
             Duration::from_secs(60),
-        ).with_context(|| format!("git checkout {} in {:?}", b, dest))?;
+        )
+        .with_context(|| format!("git checkout {} in {:?}", b, dest))?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -114,7 +112,8 @@ fn fetch_and_checkout(dest: &Path, branch: Option<&str>) -> Result<String> {
                 .args(["reset", "--hard", "FETCH_HEAD"])
                 .env("GIT_TERMINAL_PROMPT", "0"),
             Duration::from_secs(60),
-        ).with_context(|| format!("git reset --hard in {:?}", dest))?;
+        )
+        .with_context(|| format!("git reset --hard in {:?}", dest))?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr);
@@ -148,7 +147,8 @@ fn run_command_with_timeout(cmd: &mut Command, _timeout: Duration) -> Result<std
     // output() 会同时读取 stdout/stderr 管道，避免缓冲区满导致死锁
     // 之前的 try_wait 轮询方式从不读取管道，git clone 输出量大时
     // 管道缓冲区被填满，导致 git 进程阻塞在 write() 上永远无法退出
-    let output = cmd.output()
+    let output = cmd
+        .output()
         .with_context(|| format!("spawn command: {:?}", cmd))?;
     Ok(output)
 }

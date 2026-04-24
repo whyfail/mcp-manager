@@ -167,7 +167,9 @@ pub fn install_git_skill(
     let user_provided_name = name.is_some();
 
     // If URL has a /tree/ or /blob/ subpath, that IS the subpath
-    let effective_subpath = subpath.map(|s| s.to_string()).or_else(|| parsed.subpath.clone());
+    let effective_subpath = subpath
+        .map(|s| s.to_string())
+        .or_else(|| parsed.subpath.clone());
 
     let skill_name = name.unwrap_or_else(|| {
         if let Some(sp) = &effective_subpath {
@@ -190,8 +192,10 @@ pub fn install_git_skill(
 
     // 先删除已存在的目录（处理 APFS 删除延迟问题），不再先检查
     if central_path.exists() {
-        std::fs::remove_dir_all(&central_path)
-            .context(format!("failed to remove existing skill: {:?}", central_path))?;
+        std::fs::remove_dir_all(&central_path).context(format!(
+            "failed to remove existing skill: {:?}",
+            central_path
+        ))?;
         // 等待 APFS 完成删除操作
         std::thread::sleep(std::time::Duration::from_millis(100));
     }
@@ -232,12 +236,14 @@ pub fn install_git_skill(
                     "[installer] GitHub API download failed, falling back to git clone: {:#}",
                     err
                 );
-                let (repo_dir, rev) = clone_to_cache_with_ttl(&parsed.clone_url, parsed.branch.as_deref())?;
-                let copy_src = if effective_subpath.as_deref() == Some(".") || effective_subpath.is_none() {
-                    repo_dir.clone()
-                } else {
-                    repo_dir.join(effective_subpath.as_ref().unwrap())
-                };
+                let (repo_dir, rev) =
+                    clone_to_cache_with_ttl(&parsed.clone_url, parsed.branch.as_deref())?;
+                let copy_src =
+                    if effective_subpath.as_deref() == Some(".") || effective_subpath.is_none() {
+                        repo_dir.clone()
+                    } else {
+                        repo_dir.join(effective_subpath.as_ref().unwrap())
+                    };
                 if !copy_src.exists() {
                     anyhow::bail!("subpath not found in repo: {:?}", copy_src);
                 }
@@ -339,12 +345,15 @@ pub fn install_git_skill_from_selection(
 
     // 先删除已存在的目录（处理 APFS 删除延迟问题），不再先检查
     if central_path.exists() {
-        std::fs::remove_dir_all(&central_path)
-            .context(format!("failed to remove existing skill: {:?}", central_path))?;
+        std::fs::remove_dir_all(&central_path).context(format!(
+            "failed to remove existing skill: {:?}",
+            central_path
+        ))?;
         std::thread::sleep(std::time::Duration::from_millis(100));
     }
 
-    let (repo_dir, revision) = clone_to_cache_with_ttl(&parsed.clone_url, parsed.branch.as_deref())?;
+    let (repo_dir, revision) =
+        clone_to_cache_with_ttl(&parsed.clone_url, parsed.branch.as_deref())?;
 
     let copy_src = if subpath == "." {
         repo_dir.clone()

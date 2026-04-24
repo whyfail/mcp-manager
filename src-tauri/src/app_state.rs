@@ -1,8 +1,8 @@
-use serde::Serialize;
-use crate::database::Database;
-use std::sync::RwLock;
-use crate::skill_core::tool_adapters::ToolStatus;
 use crate::commands::agents::AgentInfo;
+use crate::database::Database;
+use crate::skill_core::tool_adapters::ToolStatus;
+use serde::Serialize;
+use std::sync::RwLock;
 
 /// 已安装工具的统一报告（全局缓存）
 #[derive(Clone, Debug, Serialize)]

@@ -56,7 +56,10 @@ pub fn download_github_directory(
     dest: &Path,
     token: Option<&str>,
 ) -> Result<()> {
-    eprintln!("[DEBUG] Starting GitHub API download: {}/{}/{} ref={}", owner, repo, path, branch);
+    eprintln!(
+        "[DEBUG] Starting GitHub API download: {}/{}/{} ref={}",
+        owner, repo, path, branch
+    );
     let client = reqwest::blocking::Client::builder()
         .timeout(Duration::from_secs(30))
         .build()
@@ -112,9 +115,7 @@ fn download_dir_recursive(
                         std::fs::create_dir_all(parent)
                             .with_context(|| format!("create parent dir {:?}", parent))?;
                     }
-                    let mut file_req = client
-                        .get(download_url)
-                        .header("User-Agent", "ai-toolkit");
+                    let mut file_req = client.get(download_url).header("User-Agent", "ai-toolkit");
                     if let Some(t) = token {
                         file_req = file_req.header("Authorization", format!("Bearer {}", t));
                     }
@@ -131,7 +132,15 @@ fn download_dir_recursive(
                 }
             }
             "dir" => {
-                download_dir_recursive(client, owner, repo, branch, &item.path, &local_path, token)?;
+                download_dir_recursive(
+                    client,
+                    owner,
+                    repo,
+                    branch,
+                    &item.path,
+                    &local_path,
+                    token,
+                )?;
             }
             _ => {
                 // Skip symlinks, submodules, etc.
@@ -164,8 +173,5 @@ fn check_github_response(resp: reqwest::blocking::Response) -> Result<reqwest::b
             .unwrap_or_else(|| "403 Forbidden".to_string());
         anyhow::bail!("{}", reset_hint);
     }
-    Err(anyhow::anyhow!(
-        "GitHub API error {}",
-        status
-    ))
+    Err(anyhow::anyhow!("GitHub API error {}", status))
 }

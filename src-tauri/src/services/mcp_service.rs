@@ -1,21 +1,26 @@
-use indexmap::IndexMap;
 use crate::app_state::AppState;
 use crate::database::McpServer;
 use crate::error::AppError;
 use crate::mcp::AppType;
 use crate::services::sync;
+use indexmap::IndexMap;
 
 /// MCP 服务业务逻辑层
 pub struct McpService;
 
 impl McpService {
     /// 获取所有 MCP 服务器
-    pub fn get_all_servers(state: &tauri::State<AppState>) -> Result<IndexMap<String, McpServer>, AppError> {
+    pub fn get_all_servers(
+        state: &tauri::State<AppState>,
+    ) -> Result<IndexMap<String, McpServer>, AppError> {
         state.db.get_all_mcp_servers()
     }
 
     /// 添加或更新 MCP 服务器
-    pub fn upsert_server(state: &tauri::State<AppState>, server: McpServer) -> Result<(), AppError> {
+    pub fn upsert_server(
+        state: &tauri::State<AppState>,
+        server: McpServer,
+    ) -> Result<(), AppError> {
         state.db.save_mcp_server(&server)?;
         // 同步到配置文件
         let servers = state.db.get_all_mcp_servers()?;
@@ -40,7 +45,7 @@ impl McpService {
         enabled: bool,
     ) -> Result<(), AppError> {
         let mut servers = state.db.get_all_mcp_servers()?;
-        
+
         if let Some(server) = servers.get_mut(server_id) {
             server.apps.set_enabled_for(&app, enabled);
             state.db.save_mcp_server(server)?;

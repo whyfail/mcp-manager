@@ -81,8 +81,8 @@ export const SUPPORTED_TOOLS: ToolMeta[] = [
     id: 'qodercli',
     name: 'qodercli',
     displayName: 'Qoder CLI',
-    skillsDir: '.qodercli/skills',
-    detectDir: '.qodercli',
+    skillsDir: '.qoder/skills',
+    detectDir: '.qoder',
     binaryName: 'qodercli',
   },
   {
@@ -105,8 +105,8 @@ export const SUPPORTED_TOOLS: ToolMeta[] = [
     id: 'trae-solo-cn',
     name: 'trae-solo-cn',
     displayName: 'TRAE SOLO CN',
-    skillsDir: '.trae-solo-cn/skills',
-    detectDir: '.trae-solo-cn',
+    skillsDir: '.trae-cn/skills',
+    detectDir: '.trae-cn',
     binaryName: 'trae',
   },
   {

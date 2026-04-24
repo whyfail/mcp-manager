@@ -41,21 +41,45 @@ fn is_app_installed_windows(app: &AppType) -> bool {
     if !cfg!(windows) {
         return false;
     }
-    let app_name = match app {
-        AppType::Trae => "Trae.exe",
-        AppType::TraeCn => "Trae.exe",
-        AppType::TraeSoloCn => "Trae.exe",
+    let candidates: &[&str] = match app {
+        AppType::Trae => &["Trae.exe"],
+        AppType::TraeCn => &["Trae.exe", "Trae CN.exe"],
+        AppType::TraeSoloCn => &["Trae.exe", "TRAE SOLO CN.exe"],
+        AppType::Qoder => &["Qoder.exe"],
         _ => return false,
     };
-    let paths = [
+
+    let base_paths = [
         std::env::var("ProgramFiles").ok(),
+        std::env::var("ProgramFiles(x86)").ok(),
         std::env::var("LOCALAPPDATA").ok(),
+        std::env::var("APPDATA").ok(),
         std::env::var("USERPROFILE").ok(),
     ];
-    for base in paths.into_iter().flatten() {
-        let path = std::path::PathBuf::from(base);
-        if path.join(app_name).exists() {
-            return true;
+
+    let common_subdirs = [
+        "",
+        "Programs",
+        "Trae",
+        "Trae CN",
+        "TRAE SOLO CN",
+        "Qoder",
+        "Microsoft\\WindowsApps",
+    ];
+
+    for base in base_paths.into_iter().flatten() {
+        let base = std::path::PathBuf::from(base);
+        for subdir in &common_subdirs {
+            let dir = if subdir.is_empty() {
+                base.clone()
+            } else {
+                base.join(subdir)
+            };
+            for exe in candidates {
+                if dir.join(exe).exists() {
+                    return true;
+                }
+            }
         }
     }
     false
@@ -99,7 +123,8 @@ fn ensure_npm_path_unix() -> Result<(), String> {
 
     let bin_path = format!("{}/bin", prefix);
 
-    let zshrc_path = std::path::PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(".zshrc");
+    let zshrc_path =
+        std::path::PathBuf::from(std::env::var("HOME").unwrap_or_default()).join(".zshrc");
     let content = std::fs::read_to_string(&zshrc_path).unwrap_or_default();
 
     if !content.contains(&bin_path) {
@@ -128,7 +153,10 @@ fn ensure_npm_path_windows() -> Result<(), String> {
     }
 
     let prefix = String::from_utf8_lossy(&output.stdout).trim().to_string();
-    let bin_path = format!("{}\\\\npm", prefix.replace('/', "\\"));
+    if prefix.is_empty() {
+        return Ok(());
+    }
+    let prefix = prefix.replace('/', "\\");
 
     let user_profile = std::env::var("USERPROFILE").unwrap_or_default();
     let powershell_profile = std::path::PathBuf::from(&user_profile)
@@ -150,8 +178,8 @@ fn ensure_npm_path_windows() -> Result<(), String> {
 
     let content = std::fs::read_to_string(&profile_path).unwrap_or_default();
 
-    if !content.contains(&bin_path) && !content.contains(&prefix) {
-        let export_line = format!("\n$env:PATH = \"{};$env:PATH\"\n", bin_path);
+    if !content.contains(&prefix) {
+        let export_line = format!("\n$env:PATH = \"{};$env:PATH\"\n", prefix);
         std::fs::OpenOptions::new()
             .append(true)
             .create(true)
@@ -172,7 +200,10 @@ pub fn which_binary(binary: &str) -> Option<String> {
         .output()
         .ok()?;
     if output.status.success() {
-        String::from_utf8_lossy(&output.stdout).lines().next().map(|s| s.to_string())
+        String::from_utf8_lossy(&output.stdout)
+            .lines()
+            .next()
+            .map(|s| s.to_string())
     } else {
         None
     }
@@ -391,10 +422,7 @@ impl ToolManagerService {
             let home = std::env::var("HOME").ok();
 
             // Check if binary is in Homebrew directories
-            let homebrew_bin_paths = [
-                "/opt/homebrew/bin",
-                "/usr/local/bin",
-            ];
+            let homebrew_bin_paths = ["/opt/homebrew/bin", "/usr/local/bin"];
             for path in homebrew_bin_paths {
                 if binary_path_str.starts_with(path) {
                     // Verify it's actually Homebrew by checking if brew exists and the binary is linked
@@ -492,10 +520,7 @@ impl ToolManagerService {
             // Check npm on Windows
             if let Some(npm_prefix) = get_npm_global_prefix() {
                 let npm_prefix_path = std::path::Path::new(&npm_prefix);
-                let npm_global_bin = npm_prefix_path.join("bin");
-                if binary_path_str.starts_with(npm_prefix_path.to_str().unwrap_or(""))
-                    || binary_path_str.starts_with(npm_global_bin.to_str().unwrap_or(""))
-                {
+                if binary_path_str.starts_with(npm_prefix_path.to_str().unwrap_or("")) {
                     return Some(InstallMethodType::Npm);
                 }
             }
@@ -503,7 +528,11 @@ impl ToolManagerService {
 
         // Fallback: check if npm global list contains the package
         let install_info = app.get_install_info()?;
-        if let Some(method) = install_info.methods.iter().find(|m| matches!(m, InstallMethod::Npm { .. })) {
+        if let Some(method) = install_info
+            .methods
+            .iter()
+            .find(|m| matches!(m, InstallMethod::Npm { .. }))
+        {
             if let InstallMethod::Npm { package } = method {
                 if npm_list_global(package).unwrap_or(false) {
                     return Some(InstallMethodType::Npm);
@@ -628,7 +657,10 @@ impl ToolManagerService {
             if let InstallMethod::Brew { package } = method {
                 let output = tokio::process::Command::new("sh")
                     .suppress_console()
-                    .args(["-c", &format!("brew info {} 2>/dev/null | head -1", package)])
+                    .args([
+                        "-c",
+                        &format!("brew info {} 2>/dev/null | head -1", package),
+                    ])
                     .stdout(Stdio::piped())
                     .stderr(Stdio::piped())
                     .output()
@@ -638,7 +670,13 @@ impl ToolManagerService {
                     let output_str = String::from_utf8_lossy(&output.stdout);
                     if let Some(version) = output_str.split_whitespace().nth(1) {
                         let version = version.trim_start_matches('[').trim_end_matches(',');
-                        if !version.is_empty() && version.chars().next().map(|c| c.is_ascii_digit()).unwrap_or(false) {
+                        if !version.is_empty()
+                            && version
+                                .chars()
+                                .next()
+                                .map(|c| c.is_ascii_digit())
+                                .unwrap_or(false)
+                        {
                             return Some(version.to_string());
                         }
                     }
@@ -667,7 +705,8 @@ impl ToolManagerService {
                 #[cfg(windows)]
                 {
                     let mut cmd = std::process::Command::new("cmd");
-                    cmd.suppress_console().args(["/C", "npm", "install", "-g", package]);
+                    cmd.suppress_console()
+                        .args(["/C", "npm", "install", "-g", package]);
                     Self::execute_command_windows(&mut cmd).await?;
                 }
                 #[cfg(not(windows))]
@@ -707,9 +746,7 @@ impl ToolManagerService {
                     Self::execute_command(&mut cmd).await
                 }
             }
-            InstallMethod::Download { url } => {
-                Err(format!("请手动下载安装: {}", url))
-            }
+            InstallMethod::Download { url } => Err(format!("请手动下载安装: {}", url)),
         }
     }
 
@@ -721,7 +758,9 @@ impl ToolManagerService {
         match detected_method {
             #[cfg(not(windows))]
             Some(InstallMethodType::Brew) => {
-                let package = install_info.methods.iter()
+                let package = install_info
+                    .methods
+                    .iter()
                     .find_map(|m| {
                         if let InstallMethod::Brew { package } = m {
                             Some(package.clone())
@@ -736,28 +775,29 @@ impl ToolManagerService {
             }
             #[cfg(windows)]
             Some(InstallMethodType::Winget) => {
-                let package = install_info.methods.iter()
-                    .find_map(|m| {
-                        match m {
-                            InstallMethod::Brew { package } => Some(package.clone()),
-                            InstallMethod::Npm { package } => Some(package.clone()),
-                            _ => None,
-                        }
+                let package = install_info
+                    .methods
+                    .iter()
+                    .find_map(|m| match m {
+                        InstallMethod::Brew { package } => Some(package.clone()),
+                        InstallMethod::Npm { package } => Some(package.clone()),
+                        _ => None,
                     })
                     .unwrap_or_else(|| app.name().to_lowercase());
                 let mut cmd = std::process::Command::new("winget");
-                cmd.suppress_console().args(["upgrade", "--id", &package, "-e"]);
+                cmd.suppress_console()
+                    .args(["upgrade", "--id", &package, "-e"]);
                 Self::execute_command_windows(&mut cmd).await
             }
             #[cfg(windows)]
             Some(InstallMethodType::Scoop) => {
-                let package = install_info.methods.iter()
-                    .find_map(|m| {
-                        match m {
-                            InstallMethod::Brew { package } => Some(package.clone()),
-                            InstallMethod::Npm { package } => Some(package.clone()),
-                            _ => None,
-                        }
+                let package = install_info
+                    .methods
+                    .iter()
+                    .find_map(|m| match m {
+                        InstallMethod::Brew { package } => Some(package.clone()),
+                        InstallMethod::Npm { package } => Some(package.clone()),
+                        _ => None,
                     })
                     .unwrap_or_else(|| app.name().to_lowercase());
                 let mut cmd = std::process::Command::new("scoop");
@@ -765,7 +805,9 @@ impl ToolManagerService {
                 Self::execute_command_windows(&mut cmd).await
             }
             Some(InstallMethodType::Npm) => {
-                let package = install_info.methods.iter()
+                let package = install_info
+                    .methods
+                    .iter()
                     .find_map(|m| {
                         if let InstallMethod::Npm { package } = m {
                             Some(package.clone())
@@ -777,26 +819,34 @@ impl ToolManagerService {
                 #[cfg(windows)]
                 {
                     let mut cmd = std::process::Command::new("cmd");
-                    cmd.suppress_console().args(["/C", "npm", "install", "-g", &format!("{}@latest", package)]);
+                    cmd.suppress_console().args([
+                        "/C",
+                        "npm",
+                        "install",
+                        "-g",
+                        &format!("{}@latest", package),
+                    ]);
                     Self::execute_command_windows(&mut cmd).await
                 }
                 #[cfg(not(windows))]
                 {
                     let mut cmd = tokio::process::Command::new("npm");
-                    cmd.suppress_console().arg("install").arg("-g").arg(format!("{}@latest", package));
+                    cmd.suppress_console()
+                        .arg("install")
+                        .arg("-g")
+                        .arg(format!("{}@latest", package));
                     Self::execute_command(&mut cmd).await
                 }
             }
             #[cfg(not(windows))]
             Some(InstallMethodType::Curl) => {
-                if let Some(url) = install_info.methods.iter()
-                    .find_map(|m| {
-                        if let InstallMethod::Curl { url } = m {
-                            Some(url.clone())
-                        } else {
-                            None
-                        }
-                    }) {
+                if let Some(url) = install_info.methods.iter().find_map(|m| {
+                    if let InstallMethod::Curl { url } = m {
+                        Some(url.clone())
+                    } else {
+                        None
+                    }
+                }) {
                     let script = format!("curl -fsSL {} | bash", url);
                     let mut cmd = tokio::process::Command::new("sh");
                     cmd.suppress_console().arg("-c").arg(&script);
@@ -813,9 +863,7 @@ impl ToolManagerService {
                 }
             }
             #[cfg(windows)]
-            Some(InstallMethodType::Curl) => {
-                Err("此工具不支持自动更新，请手动下载新版本".into())
-            }
+            Some(InstallMethodType::Curl) => Err("此工具不支持自动更新，请手动下载新版本".into()),
             Some(InstallMethodType::Custom) => {
                 if install_info.update_cmd.is_empty() {
                     return Err("此工具不支持自动更新，请手动下载新版本".into());
@@ -823,7 +871,8 @@ impl ToolManagerService {
                 #[cfg(windows)]
                 {
                     let mut cmd = std::process::Command::new("cmd");
-                    cmd.suppress_console().args(["/C", &install_info.update_cmd]);
+                    cmd.suppress_console()
+                        .args(["/C", &install_info.update_cmd]);
                     Self::execute_command_windows(&mut cmd).await
                 }
                 #[cfg(not(windows))]
@@ -848,7 +897,8 @@ impl ToolManagerService {
                     #[cfg(windows)]
                     {
                         let mut cmd = std::process::Command::new("cmd");
-                        cmd.suppress_console().args(["/C", &install_info.update_cmd]);
+                        cmd.suppress_console()
+                            .args(["/C", &install_info.update_cmd]);
                         Self::execute_command_windows(&mut cmd).await
                     }
                     #[cfg(not(windows))]
